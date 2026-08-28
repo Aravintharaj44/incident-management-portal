@@ -7,7 +7,7 @@ import axios from "axios";
  * means no screen ever has to think about tokens or response envelopes.
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+const BASE_URL = import.meta.env.SVRVER_API_URL || "http://localhost:5000/api/v1";
 
 export const TOKEN_KEY = "imp_token";
 
