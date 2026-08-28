@@ -1,0 +1,61 @@
+import { Empty, Timeline, Tooltip, Typography } from "antd";
+import {
+    DisconnectOutlined,
+    EditOutlined,
+    FileAddOutlined,
+    FileExcelOutlined,
+    LinkOutlined,
+    MessageOutlined,
+    PlusCircleOutlined,
+    RedoOutlined,
+    SwapOutlined,
+    UserSwitchOutlined,
+} from "@ant-design/icons";
+import { formatDateTime, fromNow } from "../../utils/format";
+
+const { Text } = Typography;
+
+const ACTION_META = {
+    created: { icon: <PlusCircleOutlined />, color: "blue", label: "raised this incident" },
+    status_changed: { icon: <SwapOutlined />, color: "gold", label: "changed the status" },
+    priority_changed: { icon: <SwapOutlined />, color: "orange", label: "changed the priority" },
+    category_changed: { icon: <SwapOutlined />, color: "purple", label: "changed the category" },
+    assigned: { icon: <UserSwitchOutlined />, color: "green", label: "assigned this incident" },
+    reassigned: { icon: <UserSwitchOutlined />, color: "green", label: "reassigned this incident" },
+    unassigned: { icon: <UserSwitchOutlined />, color: "grey", label: "returned it to the queue" },
+    updated: { icon: <EditOutlined />, color: "blue", label: "updated the details" },
+    commented: { icon: <MessageOutlined />, color: "grey", label: "commented" },
+    attachment_added: { icon: <FileAddOutlined />, color: "cyan", label: "added an attachment" },
+    attachment_removed: { icon: <FileExcelOutlined />, color: "red", label: "removed an attachment" },
+    reopened: { icon: <RedoOutlined />, color: "red", label: "reopened this incident" },
+    linked: { icon: <LinkOutlined />, color: "blue", label: "linked this incident" },
+    unlinked: { icon: <DisconnectOutlined />, color: "grey", label: "removed an incident link" },
+};
+
+const ActivityTimeline = ({ activity = [] }) => {
+    if (!activity.length) {
+        return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No activity recorded yet" />;
+    }
+
+    const items = activity.map((entry) => {
+        const meta = ACTION_META[entry.action] || { icon: <EditOutlined />, color: "grey", label: entry.action };
+        return {
+            key: entry._id,
+            icon: meta.icon,
+            color: meta.color,
+            content: (
+                <div>
+                    <Text><Text strong>{entry.performedBy?.name || "Someone"}</Text> {meta.label}
+                        {entry.oldValue && entry.newValue && <>{" from "}<Text code>{entry.oldValue}</Text>{" to "}<Text code>{entry.newValue}</Text></>}
+                    </Text>
+                    {entry.note && <div style={{ marginTop: 4 }}><Text type="secondary" style={{ fontSize: 12 }}>{entry.note}</Text></div>}
+                    <Tooltip title={formatDateTime(entry.createdAt)}><Text type="secondary" style={{ fontSize: 11 }}>{fromNow(entry.createdAt)}</Text></Tooltip>
+                </div>
+            ),
+        };
+    });
+
+    return <Timeline items={items} style={{ marginTop: 8 }} />;
+};
+
+export default ActivityTimeline;

@@ -1,0 +1,64 @@
+/**
+ * Global styles.
+ *
+ * Deliberately minimal: Ant Design handles the component styling, and the
+ * design tokens live in src/theme.js. Only genuinely global rules belong here.
+ */
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #f5f7fa;
+}
+
+/* Row highlight for incidents that have breached their SLA (FR-14). */
+.row-overdue > td {
+    background-color: #fff2f0 !important;
+}
+
+.row-overdue:hover > td {
+    background-color: #ffe7e3 !important;
+}
+
+/* Deactivated users and retired categories read as muted rather than absent. */
+.row-inactive > td {
+    opacity: 0.55;
+}
+
+/* A slimmer scrollbar keeps long tables and the notification list tidy. */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #d9d9d9;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #bfbfbf;
+}
+
+/* Links inside table cells should not repaint the whole row blue. */
+.ant-table-cell a {
+    color: inherit;
+}
+
+.ant-table-cell a:hover {
+    color: #1677ff;
+}

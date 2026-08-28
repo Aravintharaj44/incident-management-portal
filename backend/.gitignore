@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment - never commit real secrets (BRD s17: Configuration)
+.env
+.env.local
+.env.*.local
+
+# Uploaded attachments are user data, not source
+uploads/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

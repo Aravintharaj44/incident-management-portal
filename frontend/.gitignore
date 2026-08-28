@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-ssr/
+.vite/
+
+.env
+.env.local
+.env.*.local
+
+*.log
+npm-debug.log*
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.local
