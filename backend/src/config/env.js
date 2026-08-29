@@ -9,6 +9,7 @@
 
 const path = require("path");
 
+const os = require("os");
 const toInt = (value, fallback) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isNaN(parsed) ? fallback : parsed;
@@ -34,10 +35,28 @@ const env = {
         .map((url) => url.trim())
         .filter(Boolean),
 
+    // upload: {
+    //     dir: process.env.UPLOAD_DIR
+    //         ? path.resolve(process.env.UPLOAD_DIR)
+    //         : path.join(__dirname, "..", "..", "uploads"),
+    //     maxFileSizeMb: toInt(process.env.MAX_FILE_SIZE_MB, 5),
+    //     allowedMimeTypes: (
+    //         process.env.ALLOWED_MIME_TYPES ||
+    //         "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain"
+    //     )
+    //         .split(",")
+    //         .map((type) => type.trim())
+    //         .filter(Boolean),
+    // },
+
     upload: {
-        dir: process.env.UPLOAD_DIR
-            ? path.resolve(process.env.UPLOAD_DIR)
-            : path.join(__dirname, "..", "..", "uploads"),
+        dir: process.env.VERCEL
+            // Vercel sets VERCEL=1 automatically — force /tmp regardless of UPLOAD_DIR,
+            // since /var/task is read-only and nothing outside /tmp is writable.
+            ? path.join(os.tmpdir(), "incident-portal-uploads")
+            : process.env.UPLOAD_DIR
+                ? path.resolve(process.env.UPLOAD_DIR)
+                : path.join(__dirname, "..", "..", "uploads"),
         maxFileSizeMb: toInt(process.env.MAX_FILE_SIZE_MB, 5),
         allowedMimeTypes: (
             process.env.ALLOWED_MIME_TYPES ||
@@ -47,7 +66,6 @@ const env = {
             .map((type) => type.trim())
             .filter(Boolean),
     },
-
     mail: {
         enabled: toBool(process.env.MAIL_ENABLED, false),
         host: process.env.SMTP_HOST,
@@ -84,7 +102,7 @@ const validateEnv = () => {
     if (missing.length) {
         throw new Error(
             `Missing required environment variables: ${missing.join(", ")}. ` +
-                "Copy backend/.env.example to backend/.env and fill them in."
+            "Copy backend/.env.example to backend/.env and fill them in."
         );
     }
 
