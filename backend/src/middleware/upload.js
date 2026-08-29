@@ -6,10 +6,24 @@ const { env } = require("../config/env");
 const ApiError = require("../utils/ApiError");
 
 // Created at load time so the first upload cannot fail on a missing folder.
-fs.mkdirSync(env.upload.dir, { recursive: true });
+// fs.mkdirSync(env.upload.dir, { recursive: true });
+try {
+    fs.mkdirSync(env.upload.dir, { recursive: true });
+} catch (error) {
+    // Swallow here; multer's destination callback will surface a real
+    // error to the request if the directory truly can't be created.
+}
 
 const storage = multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, env.upload.dir),
+    // destination: (_req, _file, cb) => cb(null, env.upload.dir),
+    destination: (_req, _file, cb) => {
+        try {
+            fs.mkdirSync(env.upload.dir, { recursive: true });
+            cb(null, env.upload.dir);
+        } catch (error) {
+            cb(error);
+        }
+    },
 
     filename: (_req, file, cb) => {
         // The client-supplied name is never used on disk: a random name kills
@@ -44,7 +58,7 @@ const upload = multer({
 /** Best-effort cleanup of orphaned files when a request fails after upload. */
 const removeFile = (storedName) => {
     if (!storedName) return;
-    fs.promises.unlink(path.join(env.upload.dir, storedName)).catch(() => {});
+    fs.promises.unlink(path.join(env.upload.dir, storedName)).catch(() => { });
 };
 
 module.exports = upload;

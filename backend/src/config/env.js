@@ -50,7 +50,7 @@ const env = {
     // },
 
     upload: {
-        dir: process.env.VERCEL
+        dir: (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION)
             // Vercel sets VERCEL=1 automatically — force /tmp regardless of UPLOAD_DIR,
             // since /var/task is read-only and nothing outside /tmp is writable.
             ? path.join(os.tmpdir(), "incident-portal-uploads")
