@@ -11,7 +11,7 @@ export default defineConfig({
          * Proxying /api means the browser talks to the same origin as the app
          * during development, so CORS never comes into play locally. The
          * axios base URL still points at the API directly by default; set
-         * SVRVER_API_URL=/api/v1 to route through this proxy instead.
+         * VITE_API_URL=/api/v1 to route through this proxy instead.
          */
         proxy: {
             "/api": {
