@@ -9,6 +9,8 @@ const attachmentSchema = new mongoose.Schema(
             index: true,
         },
 
+        rca: { type: mongoose.Schema.Types.ObjectId, ref: "RootCauseAnalysis", default: null, index: true },
+
         // Name as the user saw it on their machine.
         originalName: { type: String, required: true },
 

@@ -7,6 +7,7 @@ const {
     getCharts,
     getAgentWorkload,
     getRecentIncidents,
+    getAdvancedAnalytics,
 } = require("../controllers/dashboardController");
 
 const router = express.Router();
@@ -18,6 +19,7 @@ router.use(protect);
 router.get("/summary", getSummary);
 router.get("/charts", getCharts);
 router.get("/recent", getRecentIncidents);
+router.get("/advanced", getAdvancedAnalytics);
 
 // Cross-agent workload is a management view.
 router.get("/workload", authorize(ROLES.ADMIN), getAgentWorkload);

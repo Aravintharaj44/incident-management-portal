@@ -10,6 +10,7 @@ const relationships = [
     { value: "Related", label: "Related" },
     { value: "Duplicate", label: "Duplicate" },
     { value: "Caused-By", label: "Caused by" },
+    { value: "Child-Of", label: "Make this a child of the selected major incident" },
 ];
 
 const LinkedIncidentPanel = ({ incidentId, canManageLinks, onChange }) => {
@@ -21,12 +22,15 @@ const LinkedIncidentPanel = ({ incidentId, canManageLinks, onChange }) => {
     const [open, setOpen] = useState(false);
     const [candidates, setCandidates] = useState([]);
     const [form] = Form.useForm();
+    const [suggestions, setSuggestions] = useState([]);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
             const response = await incidentApi.listLinks(incidentId);
             setLinks(response.data.links);
+            const suggestionResponse = await incidentApi.listCorrelationSuggestions(incidentId);
+            setSuggestions(suggestionResponse.data.suggestions);
         } catch (err) {
             message.error(err.message);
         } finally {
@@ -66,6 +70,15 @@ const LinkedIncidentPanel = ({ incidentId, canManageLinks, onChange }) => {
         }
     };
 
+    const reviewSuggestion = async (suggestion, action) => {
+        setActing(true);
+        try {
+            await incidentApi.reviewCorrelationSuggestion(incidentId, suggestion._id, { action, relationshipType: "Related" });
+            message.success(action === "confirm" ? "Suggested link confirmed" : "Suggestion dismissed");
+            await load();
+            onChange?.();
+        } catch (err) { message.error(err.message); } finally { setActing(false); }
+    };
     const remove = (link) => modal.confirm({
         title: `Remove link to ${link.incident.incidentNumber}?`,
         content: "The incidents will no longer be associated.",
@@ -89,7 +102,16 @@ const LinkedIncidentPanel = ({ incidentId, canManageLinks, onChange }) => {
     return (
         <>
             {canManageLinks && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ marginBottom: 12 }}>Link incident</Button>}
-            <List loading={loading} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No linked incidents" /> }} dataSource={links} renderItem={(link) => (
+            {suggestions.length > 0 && (
+                <List size="small" header="Suggested correlations — review required" style={{ marginBottom: 16 }} dataSource={suggestions} renderItem={(suggestion) => (
+                    <List.Item actions={canManageLinks ? [
+                        <Button key="confirm" type="link" loading={acting} onClick={() => reviewSuggestion(suggestion, "confirm")}>Confirm</Button>,
+                        <Button key="dismiss" type="link" danger loading={acting} onClick={() => reviewSuggestion(suggestion, "dismiss")}>Dismiss</Button>,
+                    ] : []}>
+                        <Space><Text strong>{suggestion.suggestedIncidentId.incidentNumber}</Text><Text>{suggestion.suggestedIncidentId.title}</Text><Tag>{Math.round(suggestion.score * 100)}% match</Tag></Space>
+                    </List.Item>
+                )} />
+            )}            <List loading={loading} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No linked incidents" /> }} dataSource={links} renderItem={(link) => (
                 <List.Item actions={canManageLinks ? [<Button key="remove" type="text" danger icon={<DeleteOutlined />} loading={acting} onClick={() => remove(link)}>Unlink</Button>] : []}>
                     <List.Item.Meta avatar={<LinkOutlined style={{ color: "#1677ff" }} />} title={<Space wrap><Button type="link" style={{ padding: 0 }} onClick={() => navigate(`/incidents/${link.incident._id}`)}>{link.incident.incidentNumber}</Button><Text>{link.incident.title}</Text></Space>} description={<Space wrap size={6}><Tag color="blue">{link.relationshipType}</Tag><StatusTag status={link.incident.status} /><PriorityTag priority={link.incident.priority} /></Space>} />
                 </List.Item>

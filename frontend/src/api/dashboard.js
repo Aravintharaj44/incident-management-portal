@@ -8,6 +8,8 @@ export const dashboardApi = {
 
     recent: (limit = 5) => client.get("/dashboard/recent", { params: { limit } }),
 
+    advanced: (params = {}) => client.get("/dashboard/advanced", { params }),
+
     /** Admin only. */
     workload: () => client.get("/dashboard/workload"),
 };

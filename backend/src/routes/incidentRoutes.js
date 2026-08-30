@@ -8,6 +8,7 @@ const {
     incidentValidators,
     commentValidators,
     incidentLinkValidator,
+    rcaValidators,
 } = require("../validators");
 
 const {
@@ -20,6 +21,13 @@ const {
     deleteIncident,
     exportIncidents,
 } = require("../controllers/incidentController");
+
+const {
+    getRca,
+    saveRca,
+    submitRca,
+    reviewRca,
+} = require("../controllers/rcaController");
 
 const {
     listComments,
@@ -35,6 +43,8 @@ const {
     listIncidentLinks,
     createIncidentLink,
     deleteIncidentLink,
+    listCorrelationSuggestions,
+    reviewCorrelationSuggestion,
 } = require("../controllers/incidentLinkController");
 
 const router = express.Router();
@@ -105,6 +115,13 @@ router.patch(
     assignIncident
 );
 
+/** RCA */
+router.route("/:id/rca")
+    .get(rcaValidators.byIncident, validate, getRca)
+    .put(rcaValidators.save, validate, saveRca);
+router.post("/:id/rca/submit", rcaValidators.byIncident, validate, submitRca);
+router.patch("/:id/rca/review", rcaValidators.review, validate, reviewRca);
+
 /**
  * Comments
  */
@@ -120,6 +137,10 @@ router
         validate,
         addComment
     );
+
+router.route("/:incidentId/rca/:rcaId/attachments")
+    .get(commentValidators.byIncidentId, validate, listAttachments)
+    .post(upload.array("files", 5), uploadAttachments);
 
 /**
  * Attachments
@@ -163,6 +184,9 @@ router
         validate,
         createIncidentLink
     );
+
+router.get("/:id/correlation-suggestions", incidentLinkValidator.byIncidentId, validate, listCorrelationSuggestions);
+router.patch("/:id/correlation-suggestions/:suggestionId", incidentLinkValidator.reviewSuggestion, validate, reviewCorrelationSuggestion);
 
 router.delete(
     "/:id/links/:linkId",

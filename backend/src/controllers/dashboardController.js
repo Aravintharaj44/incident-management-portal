@@ -1,5 +1,8 @@
+const mongoose = require("mongoose");
 const Incident = require("../models/Incident");
 const Category = require("../models/Category");
+const RootCauseAnalysis = require("../models/RootCauseAnalysis");
+const IncidentLink = require("../models/IncidentLink");
 const asyncHandler = require("../utils/asyncHandler");
 const { successResponse } = require("../utils/apiResponse");
 const permissions = require("../services/permissionService");
@@ -322,4 +325,54 @@ const getRecentIncidents = asyncHandler(async (req, res) => {
     });
 });
 
-module.exports = { getSummary, getCharts, getAgentWorkload, getRecentIncidents };
+
+/** Keeps every advanced widget on exactly the same category, priority and date scope. */
+const advancedIncidentFilter = (req) => {
+    const filter = { ...permissions.visibilityFilter(req.user) };
+    const categories = String(req.query.category || "").split(",").filter(mongoose.Types.ObjectId.isValid);
+    const priorities = String(req.query.priority || "").split(",").filter((value) => PRIORITY_VALUES.includes(value));
+
+    if (categories.length) filter.category = { $in: categories.map((value) => new mongoose.Types.ObjectId(value)) };
+    if (priorities.length) filter.priority = { $in: priorities };
+
+    const dateRange = {};
+    if (req.query.dateFrom && !Number.isNaN(Date.parse(req.query.dateFrom))) dateRange.$gte = new Date(req.query.dateFrom);
+    if (req.query.dateTo && !Number.isNaN(Date.parse(req.query.dateTo))) dateRange.$lte = new Date(req.query.dateTo);
+    if (Object.keys(dateRange).length) filter.createdAt = dateRange;
+
+    return filter;
+};
+
+const prefixFilter = (filter, prefix) => Object.fromEntries(
+    Object.entries(filter).map(([key, value]) => [`${prefix}.${key}`, value])
+);
+
+/** GET /api/v1/dashboard/advanced - filter-aware analytics for FR3-14..17. */
+const getAdvancedAnalytics = asyncHandler(async (req, res) => {
+    const filter = advancedIncidentFilter(req);
+    const incidentFilter = prefixFilter(filter, "incident");
+    const [trend, rootCauses, majorIncidents, performance] = await Promise.all([
+        Incident.aggregate([{ $match: filter }, { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } }, { $sort: { _id: 1 } }]),
+        RootCauseAnalysis.aggregate([
+            { $match: { status: "approved" } },
+            { $lookup: { from: "incidents", localField: "incident", foreignField: "_id", as: "incident" } }, { $unwind: "$incident" },
+            { $match: incidentFilter },
+            { $group: { _id: "$rootCauseCategory", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 10 },
+        ]),
+        IncidentLink.aggregate([
+            { $match: { relationshipType: "Child-Of" } },
+            { $group: { _id: "$toIncidentId", childCount: { $sum: 1 } } },
+            { $lookup: { from: "incidents", localField: "_id", foreignField: "_id", as: "incident" } }, { $unwind: "$incident" },
+            { $match: { ...incidentFilter, "incident.status": { $nin: TERMINAL_STATUSES } } },
+            { $project: { _id: 0, incidentId: "$incident._id", incidentNumber: "$incident.incidentNumber", title: "$incident.title", status: "$incident.status", childCount: 1 } }, { $sort: { childCount: -1 } }, { $limit: 10 },
+        ]),
+        Incident.aggregate([
+            { $match: { ...filter, assignedTo: { $ne: null }, resolvedAt: { $ne: null } } },
+            { $group: { _id: "$assignedTo", resolved: { $sum: 1 }, avgMs: { $avg: { $subtract: ["$resolvedAt", "$createdAt"] } }, slaMet: { $sum: { $cond: [{ $lte: ["$resolvedAt", "$dueBy"] }, 1, 0] } } } },
+            { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "agent" } }, { $unwind: "$agent" },
+            { $project: { _id: 0, agentId: "$_id", name: "$agent.name", resolved: 1, averageHours: { $round: [{ $divide: ["$avgMs", 3600000] }, 1] }, slaCompliance: { $round: [{ $multiply: [{ $divide: ["$slaMet", "$resolved"] }, 100] }, 1] } } }, { $sort: { resolved: -1 } },
+        ]),
+    ]);
+    return successResponse(res, 200, "Advanced analytics retrieved", { trend: trend.map((row) => ({ date: row._id, count: row.count })), rootCauses: rootCauses.map((row) => ({ category: row._id, count: row.count })), majorIncidents, performance });
+});
+module.exports = { getSummary, getCharts, getAgentWorkload, getRecentIncidents, getAdvancedAnalytics };

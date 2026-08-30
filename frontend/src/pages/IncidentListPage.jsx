@@ -19,6 +19,7 @@ const { Text } = Typography;
 
 /** Filters that are lists in the API and arrays in component state. */
 const ARRAY_FILTERS = ["status", "priority", "category"];
+const EMPTY_FIXED_FILTERS = Object.freeze({});
 
 /** Reads the filter state out of the URL so a filtered view is shareable. */
 const parseSearchParams = (params) => {
@@ -61,13 +62,13 @@ const toSearchParams = (filters) => {
  * means the browser back button works, a filtered view can be shared, and the
  * dashboard tiles can deep-link straight into a filtered list.
  */
-const IncidentListPage = () => {
+const IncidentListPage = ({ fixedFilters = EMPTY_FIXED_FILTERS, pageTitle = "Incidents" }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const { isStaff } = useAuth();
     const { message } = App.useApp();
     const navigate = useNavigate();
 
-    const filters = useMemo(() => parseSearchParams(searchParams), [searchParams]);
+    const filters = useMemo(() => ({ ...fixedFilters, ...parseSearchParams(searchParams) }), [fixedFilters, searchParams]);
 
     const [incidents, setIncidents] = useState([]);
     const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0 });
@@ -247,7 +248,7 @@ const IncidentListPage = () => {
     return (
         <>
             <PageHeader
-                title="Incidents"
+                title={pageTitle}
                 subtitle={
                     isStaff
                         ? "Every incident you have visibility of."

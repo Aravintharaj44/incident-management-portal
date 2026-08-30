@@ -103,6 +103,9 @@ const incidentSchema = new mongoose.Schema(
 
         commentCount: { type: Number, default: 0 },
         attachmentCount: { type: Number, default: 0 },
+
+        // A major incident is inferred from its Child-Of links; this flag is a display override.
+        isMajorIncident: { type: Boolean, default: false, index: true },
     },
     {
         timestamps: true,

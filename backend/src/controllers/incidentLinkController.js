@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const Incident = require("../models/Incident");
 const IncidentLink = require("../models/IncidentLink");
+const IncidentCorrelationSuggestion = require("../models/IncidentCorrelationSuggestion");
 
 const activityService = require("../services/activityService");
 const permissions = require("../services/permissionService");
@@ -100,7 +101,9 @@ const listIncidentLinks = asyncHandler(async (req, res) => {
          * If current incident = INC-002:
          *     Causes
          */
-        if (
+        if (link.relationshipType === "Child-Of") {
+            relationshipType = isFromCurrent ? "Child of" : "Child incident";
+        } else if (
             link.relationshipType === "Caused-By" &&
             !isFromCurrent
         ) {
@@ -159,6 +162,7 @@ const createIncidentLink = asyncHandler(async (req, res) => {
         toIncidentId,
         relationshipType,
     } = req.body;
+
 
     /**
      * Validate IDs
@@ -305,6 +309,10 @@ const createIncidentLink = asyncHandler(async (req, res) => {
         relationshipType,
         linkedBy: req.user._id,
     });
+
+    if (relationshipType === "Child-Of") {
+        await Incident.findByIdAndUpdate(toIncidentId, { $set: { isMajorIncident: true } });
+    }
 
     /**
      * ========================================================
@@ -487,8 +495,63 @@ const deleteIncidentLink = asyncHandler(async (req, res) => {
 });
 
 
+
+const tokenSet = (value = "") => new Set(String(value).toLowerCase().match(/[a-z0-9]{3,}/g) || []);
+const similarity = (a, b) => {
+    const left = tokenSet(a); const right = tokenSet(b);
+    const union = new Set([...left, ...right]);
+    if (!union.size) return 0;
+    return [...left].filter((token) => right.has(token)).length / union.size;
+};
+
+/** GET /api/v1/incidents/:id/correlation-suggestions */
+const listCorrelationSuggestions = asyncHandler(async (req, res) => {
+    const incident = await Incident.findById(req.params.id);
+    if (!incident) throw ApiError.notFound("Incident not found");
+    if (!permissions.canView(req.user, incident)) throw ApiError.forbidden("You do not have access to this incident");
+
+    const windowHours = Math.max(1, Number(process.env.CORRELATION_WINDOW_HOURS || 72));
+    const from = new Date(incident.createdAt.getTime() - windowHours * 36e5);
+    const to = new Date(incident.createdAt.getTime() + windowHours * 36e5);
+    const existingLinks = await IncidentLink.find({ $or: [{ fromIncidentId: incident._id }, { toIncidentId: incident._id }] }).lean();
+    const excludedIds = existingLinks.map((link) => String(link.fromIncidentId) === String(incident._id) ? link.toIncidentId : link.fromIncidentId);
+    const candidates = await Incident.find({ _id: { $nin: [incident._id, ...excludedIds] }, category: incident.category, createdAt: { $gte: from, $lte: to } }).select("incidentNumber title description status priority").lean();
+
+    for (const candidate of candidates) {
+        const score = similarity(`${incident.title} ${incident.description}`, `${candidate.title} ${candidate.description}`);
+        if (score >= 0.12) await IncidentCorrelationSuggestion.updateOne(
+            { incidentId: incident._id, suggestedIncidentId: candidate._id },
+            { $setOnInsert: { score, status: "pending" } }, { upsert: true }
+        );
+    }
+    const suggestions = await IncidentCorrelationSuggestion.find({ incidentId: incident._id, status: "pending" })
+        .populate("suggestedIncidentId", "incidentNumber title status priority").sort({ score: -1 }).lean();
+    return successResponse(res, 200, "Correlation suggestions retrieved", { suggestions });
+});
+
+/** PATCH /api/v1/incidents/:id/correlation-suggestions/:suggestionId */
+const reviewCorrelationSuggestion = asyncHandler(async (req, res) => {
+    if (!permissions.canManageLinks(req.user)) throw ApiError.forbidden("Only administrators and support agents can review suggestions");
+    const suggestion = await IncidentCorrelationSuggestion.findOne({ _id: req.params.suggestionId, incidentId: req.params.id });
+    if (!suggestion || suggestion.status !== "pending") throw ApiError.notFound("Pending correlation suggestion not found");
+    const incident = await Incident.findById(req.params.id);
+    const suggested = await Incident.findById(suggestion.suggestedIncidentId);
+    if (!incident || !suggested || !permissions.canView(req.user, incident) || !permissions.canView(req.user, suggested)) throw ApiError.forbidden("You do not have access to these incidents");
+    if (req.body.action === "dismiss") {
+        suggestion.status = "dismissed"; suggestion.reviewedBy = req.user._id; await suggestion.save();
+        return successResponse(res, 200, "Correlation suggestion dismissed");
+    }
+    const relationshipType = req.body.relationshipType || "Related";
+    const exists = await IncidentLink.findOne({ relationshipType, $or: [{ fromIncidentId: incident._id, toIncidentId: suggested._id }, { fromIncidentId: suggested._id, toIncidentId: incident._id }] });
+    if (!exists) await IncidentLink.create({ fromIncidentId: incident._id, toIncidentId: suggested._id, relationshipType, linkedBy: req.user._id });
+    suggestion.status = "accepted"; suggestion.reviewedBy = req.user._id; await suggestion.save();
+    await Promise.all([incident, suggested].map((entry) => activityService.record({ incident: entry._id, action: ACTIVITY_ACTIONS.LINKED, performedBy: req.user._id, note: `Suggested ${relationshipType} correlation confirmed` })));
+    return successResponse(res, 200, "Correlation suggestion confirmed");
+});
 module.exports = {
     listIncidentLinks,
     createIncidentLink,
     deleteIncidentLink,
+    listCorrelationSuggestions,
+    reviewCorrelationSuggestion,
 };

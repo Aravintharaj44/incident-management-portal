@@ -17,6 +17,11 @@ const CHART_HEIGHT = 260;
 
 const noData = (series) => !series || series.length === 0 || series.every((d) => !d.count);
 
+const onChartReady = (onSegmentClick) => (plot) => {
+    if (!onSegmentClick) return;
+    plot.on("element:click", (event) => onSegmentClick(event?.data?.data));
+};
+
 const emptyState = (text) => (
     <div style={{ height: CHART_HEIGHT, display: "grid", placeItems: "center" }}>
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text} />
@@ -24,7 +29,7 @@ const emptyState = (text) => (
 );
 
 /** Donut of incidents by status. */
-export const StatusPie = ({ data }) => {
+export const StatusPie = ({ data, onSegmentClick }) => {
     if (noData(data)) return emptyState("No incidents yet");
 
     const series = data.filter((item) => item.count > 0);
@@ -51,12 +56,13 @@ export const StatusPie = ({ data }) => {
                 position: "outside",
             }}
             tooltip={{ title: (item) => item.label }}
+            onReady={onChartReady(onSegmentClick)}
         />
     );
 };
 
 /** Bars of incidents by priority, ordered most severe first. */
-export const PriorityColumn = ({ data }) => {
+export const PriorityColumn = ({ data, onSegmentClick }) => {
     if (noData(data)) return emptyState("No incidents yet");
 
     return (
@@ -79,12 +85,13 @@ export const PriorityColumn = ({ data }) => {
             }}
             axis={{ y: { title: "Incidents" } }}
             label={{ text: "count", position: "inside", style: { fill: "#fff" } }}
+            onReady={onChartReady(onSegmentClick)}
         />
     );
 };
 
 /** Created vs Resolved over time. */
-export const TrendLine = ({ data, height = CHART_HEIGHT }) => {
+export const TrendLine = ({ data, height = CHART_HEIGHT, onSegmentClick }) => {
     if (!data || data.length === 0) return emptyState("No activity in this period");
 
     return (
@@ -104,6 +111,7 @@ export const TrendLine = ({ data, height = CHART_HEIGHT }) => {
                 color: { domain: ["Created", "Resolved"], range: ["#1677ff", "#52c41a"] },
             }}
             legend={{ color: { position: "top", layout: { justifyContent: "flex-end" } } }}
+            onReady={onChartReady(onSegmentClick)}
             axis={{
                 y: { title: "Incidents" },
                 // A tick per day is unreadable over 30+ days, so thin them out.
@@ -115,7 +123,7 @@ export const TrendLine = ({ data, height = CHART_HEIGHT }) => {
 };
 
 /** Horizontal-style breakdown of incidents per category. */
-export const CategoryColumn = ({ data }) => {
+export const CategoryColumn = ({ data, onSegmentClick }) => {
     if (noData(data)) return emptyState("No incidents yet");
 
     // Long tails make the axis unreadable - show the busiest categories only.
@@ -136,6 +144,7 @@ export const CategoryColumn = ({ data }) => {
             style={{ fill: "#1677ff", maxWidth: 48 }}
             axis={{ y: { title: "Incidents" }, x: { labelAutoRotate: true } }}
             label={{ text: "count", position: "inside", style: { fill: "#fff" } }}
+            onReady={onChartReady(onSegmentClick)}
         />
     );
 };

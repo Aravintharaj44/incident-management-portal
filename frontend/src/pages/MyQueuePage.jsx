@@ -1,11 +1,14 @@
-import { Navigate } from "react-router-dom";
+import IncidentListPage from "./IncidentListPage";
 
 /**
- * "My Queue" is the incident list with the assignee filter pre-applied, so
- * there is one list implementation rather than two that can drift apart.
+ * Keeps the queue at its own URL and menu entry while reusing the incident
+ * table. The assignee and open-state filters are intentionally fixed here.
  */
 const MyQueuePage = () => (
-    <Navigate to="/incidents?assignedTo=me&open=true" replace />
+    <IncidentListPage
+        fixedFilters={{ assignedTo: "me", open: true }}
+        pageTitle="My Queue"
+    />
 );
 
 export default MyQueuePage;

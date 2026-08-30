@@ -16,11 +16,13 @@ const notificationService = require("../services/notificationService");
 const permissions = require("../services/permissionService");
 const slaService = require("../services/slaService");
 const IncidentLink = require("../models/IncidentLink");
+const RootCauseAnalysis = require("../models/RootCauseAnalysis");
 const {
     ROLES,
     STATUS,
     STATUS_VALUES,
     STATUS_LABELS,
+    PRIORITY,
     PRIORITY_VALUES,
     PRIORITY_LABELS,
     TERMINAL_STATUSES,
@@ -185,7 +187,8 @@ const getIncident = asyncHandler(async (req, res) => {
     const commentFilter = { incident: incident._id };
     if (!permissions.canUseInternalNotes(req.user)) commentFilter.isInternal = false;
 
-    const [comments, activity, attachments] = await Promise.all([
+    const [rca, comments, activity, attachments, childCount] = await Promise.all([
+        RootCauseAnalysis.findOne({ incident: incident._id }).populate("author reviewedBy", "name email role").lean(),
         Comment.find(commentFilter)
             .populate("author", "name email role")
             .sort({ createdAt: 1 })
@@ -195,6 +198,7 @@ const getIncident = asyncHandler(async (req, res) => {
             .populate("uploadedBy", "name email")
             .sort({ uploadedAt: -1 })
             .lean(),
+        IncidentLink.countDocuments({ toIncidentId: incident._id, relationshipType: "Child-Of" }),
     ]);
 
     return successResponse(res, 200, "Incident retrieved", {
@@ -202,6 +206,8 @@ const getIncident = asyncHandler(async (req, res) => {
         comments,
         activity,
         attachments,
+        correlation: { childCount, isMajorIncident: incident.isMajorIncident || childCount > 0 },
+        rca,
         // Lets the UI enable/disable controls using the same rules the API enforces.
         permissions: {
             canEdit: permissions.canEditDetails(req.user, incident),
@@ -373,7 +379,7 @@ const updateIncident = asyncHandler(async (req, res) => {
  * illegal jump is rejected here even if the UI would have allowed it.
  */
 const updateStatus = asyncHandler(async (req, res) => {
-    const { status, resolutionNote } = req.body;
+    const { status, resolutionNote, updateLinkedChildren } = req.body;
 
     const incident = await Incident.findById(req.params.id).populate(POPULATE);
     if (!incident) throw ApiError.notFound("Incident not found");
@@ -387,6 +393,10 @@ const updateStatus = asyncHandler(async (req, res) => {
     const oldStatus = incident.status;
     permissions.assertValidTransition(oldStatus, status);
 
+    if (status === STATUS.CLOSED && [PRIORITY.HIGH, PRIORITY.CRITICAL].includes(incident.priority)) {
+        const approvedRca = await RootCauseAnalysis.exists({ incident: incident._id, status: "approved" });
+        if (!approvedRca) throw ApiError.badRequest("High and Critical incidents require an approved RCA before closing");
+    }
     // Work cannot be marked done while nobody owns it.
     if (
         TERMINAL_STATUSES.includes(status) &&
@@ -418,6 +428,18 @@ const updateStatus = asyncHandler(async (req, res) => {
     }
 
     await incident.save();
+    // A major incident can explicitly propagate its terminal status to children.
+    if (updateLinkedChildren && TERMINAL_STATUSES.includes(status)) {
+        const childLinks = await IncidentLink.find({ toIncidentId: incident._id, relationshipType: "Child-Of" }).select("fromIncidentId").lean();
+        const childIds = childLinks.map((link) => link.fromIncidentId);
+        if (childIds.length) {
+            const update = { status };
+            if (status === STATUS.RESOLVED) update.resolvedAt = new Date();
+            if (status === STATUS.CLOSED) { update.closedAt = new Date(); update.resolvedAt = new Date(); }
+            await Incident.updateMany({ _id: { $in: childIds }, status: { $nin: TERMINAL_STATUSES } }, { $set: update });
+            await Promise.all(childIds.map((childId) => activityService.record({ incident: childId, action: ACTIVITY_ACTIONS.STATUS_CHANGED, performedBy: req.user._id, field: "status", newValue: STATUS_LABELS[status], note: `Updated with parent ${incident.incidentNumber}` })));
+        }
+    }
 
     await activityService.record({
         incident: incident._id,
@@ -475,8 +497,7 @@ const assignIncident = asyncHandler(async (req, res) => {
 
         incident.assignedTo = null;
         await incident.save();
-
-        await activityService.record({
+    await activityService.record({
             incident: incident._id,
             action: ACTIVITY_ACTIONS.UNASSIGNED,
             performedBy: req.user._id,
@@ -513,7 +534,6 @@ const assignIncident = asyncHandler(async (req, res) => {
     if (incident.status === STATUS.NEW) incident.status = STATUS.IN_PROGRESS;
 
     await incident.save();
-
     await activityService.record({
         incident: incident._id,
         action: previousId ? ACTIVITY_ACTIONS.REASSIGNED : ACTIVITY_ACTIONS.ASSIGNED,

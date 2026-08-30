@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
     App,
+    Button,
     Card,
     Col,
+    DatePicker,
     Row,
     Segmented,
+    Select,
     Space,
     Table,
     Tabs,
@@ -20,8 +23,12 @@ import {
     InboxOutlined,
     SyncOutlined,
     WarningOutlined,
+    DownloadOutlined,
+    PrinterOutlined,
 } from "@ant-design/icons";
-import { dashboardApi } from "../api";
+import html2canvas from "html2canvas";
+import dayjs from "dayjs";
+import { categoryApi, dashboardApi } from "../api";
 import { useAuth } from "../hooks/useAuth";
 import PageHeader from "../components/common/PageHeader";
 import StatCard from "../components/dashboard/StatCard";
@@ -38,6 +45,7 @@ import UserBadge from "../components/common/UserBadge";
 import { formatDateTime, fromNow, truncate } from "../utils/format";
 
 const { Text, Title } = Typography;
+const { RangePicker } = DatePicker;
 
 /**
  * Dashboard (FR-11).
@@ -53,11 +61,16 @@ const DashboardPage = () => {
     const { user, isAdmin, isStaff } = useAuth();
     const { message } = App.useApp();
     const navigate = useNavigate();
+    const dashboardRef = useRef(null);
 
     const [summary, setSummary] = useState(null);
     const [charts, setCharts] = useState(null);
     const [recent, setRecent] = useState(null);
     const [workload, setWorkload] = useState([]);
+    const [advanced, setAdvanced] = useState(null);
+    const [analyticsFilters, setAnalyticsFilters] = useState({});
+    const [analyticsCategories, setAnalyticsCategories] = useState([]);
+    const [exportingDashboard, setExportingDashboard] = useState(false);
 
     const [trendDays, setTrendDays] = useState(30);
     const [loading, setLoading] = useState(true);
@@ -75,16 +88,18 @@ const DashboardPage = () => {
                     dashboardApi.summary(),
                     dashboardApi.charts(days),
                     dashboardApi.recent(5),
+                    dashboardApi.advanced(analyticsFilters),
                 ];
 
                 if (isAdmin) requests.push(dashboardApi.workload());
 
-                const [summaryRes, chartsRes, recentRes, workloadRes] =
+                const [summaryRes, chartsRes, recentRes, advancedRes, workloadRes] =
                     await Promise.all(requests);
 
                 setSummary(summaryRes.data);
                 setCharts(chartsRes.data);
                 setRecent(recentRes.data);
+                setAdvanced(advancedRes.data);
                 if (workloadRes) setWorkload(workloadRes.data.workload);
             } catch (err) {
                 setError(err);
@@ -92,7 +107,7 @@ const DashboardPage = () => {
                 setLoading(false);
             }
         },
-        [isAdmin, trendDays]
+        [isAdmin, trendDays, analyticsFilters]
     );
 
     useEffect(() => {
@@ -102,19 +117,51 @@ const DashboardPage = () => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAdmin]);
+    }, [isAdmin, analyticsFilters]);
 
-    const handleTrendChange = async (days) => {
+    useEffect(() => {
+        categoryApi.list().then((response) => setAnalyticsCategories(response.data.categories)).catch(() => setAnalyticsCategories([]));
+    }, []);
+
+    const handleTrendChange = (days) => {
         setTrendDays(days);
-
-        try {
-            const response = await dashboardApi.charts(days);
-            setCharts(response.data);
-        } catch (err) {
-            message.error(err.message);
-        }
+        setAnalyticsFilters((value) => ({
+            ...value,
+            dateFrom: dayjs().subtract(days - 1, "day").startOf("day").toISOString(),
+            dateTo: dayjs().endOf("day").toISOString(),
+        }));
     };
 
+    const incidentUrl = (extra = {}) => {
+        const params = new URLSearchParams();
+        const filters = { ...analyticsFilters, ...extra };
+        Object.entries(filters).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== "") params.set(key, value);
+        });
+        return `/incidents${params.size ? `?${params.toString()}` : ""}`;
+    };
+
+    const handleDashboardExport = async () => {
+        if (!dashboardRef.current) return;
+        setExportingDashboard(true);
+        try {
+            const canvas = await html2canvas(dashboardRef.current, {
+                backgroundColor: "#ffffff",
+                scale: 2,
+                useCORS: true,
+                windowWidth: dashboardRef.current.scrollWidth,
+            });
+            const link = document.createElement("a");
+            link.download = `incident-dashboard-${dayjs().format("YYYY-MM-DD-HHmm")}.png`;
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+            message.success("Dashboard PNG downloaded");
+        } catch (err) {
+            message.error(err.message || "Could not export dashboard");
+        } finally {
+            setExportingDashboard(false);
+        }
+    };
     if (loading && !summary) return <LoadingView tip="Building your dashboard..." height={400} />;
     if (error && !summary) return <ErrorView error={error} onRetry={() => load()} />;
 
@@ -238,9 +285,13 @@ const DashboardPage = () => {
     }
 
     return (
-        <>
+        <div ref={dashboardRef}>
             <PageHeader
                 title={`Good to see you, ${user?.name?.split(" ")[0]}`}
+                extra={[
+                    <Button key="export-png" icon={<DownloadOutlined />} loading={exportingDashboard} onClick={handleDashboardExport}>Export PNG</Button>,
+                    <Button key="print-pdf" icon={<PrinterOutlined />} onClick={() => window.print()}>Print / Save PDF</Button>,
+                ]}
                 subtitle={
                     isStaff
                         ? "Here is where the queue stands right now."
@@ -322,12 +373,19 @@ const DashboardPage = () => {
                 </Col>
             </Row>
 
+            <Card title="Advanced analytics" style={{ marginTop: 16 }} extra={<Space wrap><RangePicker value={analyticsFilters.dateFrom ? [dayjs(analyticsFilters.dateFrom), analyticsFilters.dateTo ? dayjs(analyticsFilters.dateTo) : null] : null} onChange={(range) => setAnalyticsFilters((value) => ({ ...value, dateFrom: range?.[0]?.startOf("day").toISOString(), dateTo: range?.[1]?.endOf("day").toISOString() }))} /><Select allowClear value={analyticsFilters.category} placeholder="Category" style={{ width: 160 }} options={analyticsCategories.map((category) => ({ value: category._id, label: category.name }))} onChange={(category) => setAnalyticsFilters((value) => ({ ...value, category }))} /><Select allowClear value={analyticsFilters.priority} placeholder="Priority" style={{ width: 130 }} options={["low", "medium", "high", "critical"].map((value) => ({ value, label: value }))} onChange={(priority) => setAnalyticsFilters((value) => ({ ...value, priority }))} /><Button onClick={() => setAnalyticsFilters({})}>Clear</Button></Space>}>
+                <Row gutter={[16, 16]}>
+                    <Col xs={24} lg={8}><Text strong>Top approved root causes</Text><Table size="small" pagination={false} rowKey="category" dataSource={advanced?.rootCauses || []} columns={[{ title: "Category", dataIndex: "category" }, { title: "Approved RCAs", dataIndex: "count" }]} /></Col>
+                    <Col xs={24} lg={8}><Text strong>Active major incidents</Text><Table size="small" pagination={false} rowKey="incidentId" dataSource={advanced?.majorIncidents || []} onRow={(record) => ({ onClick: () => navigate(`/incidents/${record.incidentId}`), style: { cursor: "pointer" } })} columns={[{ title: "Incident", dataIndex: "incidentNumber" }, { title: "Children", dataIndex: "childCount" }, { title: "Status", dataIndex: "status" }]} /></Col>
+                    <Col xs={24} lg={8}><Text strong>Agent performance</Text><Table size="small" pagination={false} rowKey="agentId" dataSource={advanced?.performance || []} columns={[{ title: "Agent", dataIndex: "name" }, { title: "Avg hrs", dataIndex: "averageHours" }, { title: "SLA %", dataIndex: "slaCompliance" }]} /></Col>
+                </Row>
+            </Card>
             {/* --- Charts --------------------------------------------------- */}
             <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
                 <Col xs={24} lg={8}>
                     <Card title="By status" style={{ height: "100%" }}>
                         <ErrorBoundary compact fallbackTitle="Chart could not be drawn">
-                            <StatusPie data={summary?.byStatus} />
+                            <StatusPie data={summary?.byStatus} onSegmentClick={(item) => navigate(incidentUrl({ status: item.key }))} />
                         </ErrorBoundary>
                     </Card>
                 </Col>
@@ -335,7 +393,7 @@ const DashboardPage = () => {
                 <Col xs={24} lg={8}>
                     <Card title="By priority" style={{ height: "100%" }}>
                         <ErrorBoundary compact fallbackTitle="Chart could not be drawn">
-                            <PriorityColumn data={summary?.byPriority} />
+                            <PriorityColumn data={summary?.byPriority} onSegmentClick={(item) => navigate(incidentUrl({ priority: item.key }))} />
                         </ErrorBoundary>
                     </Card>
                 </Col>
@@ -343,7 +401,7 @@ const DashboardPage = () => {
                 <Col xs={24} lg={8}>
                     <Card title="By category" style={{ height: "100%" }}>
                         <ErrorBoundary compact fallbackTitle="Chart could not be drawn">
-                            <CategoryColumn data={charts?.byCategory} />
+                            <CategoryColumn data={charts?.byCategory} onSegmentClick={(item) => navigate(incidentUrl({ category: item.key }))} />
                         </ErrorBoundary>
                     </Card>
                 </Col>
@@ -352,7 +410,7 @@ const DashboardPage = () => {
             <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
                 <Col xs={24} xl={16}>
                     <Card
-                        title="Created vs resolved"
+                        title="Incident volume"
                         extra={
                             <Segmented
                                 size="small"
@@ -367,7 +425,7 @@ const DashboardPage = () => {
                         }
                     >
                         <ErrorBoundary compact fallbackTitle="Chart could not be drawn">
-                            <TrendLine data={charts?.trend} />
+                            <TrendLine data={(advanced?.trend || []).map((item) => ({ ...item, type: "Incidents" }))} onSegmentClick={(item) => navigate(incidentUrl({ dateFrom: dayjs(item.date).startOf("day").toISOString(), dateTo: dayjs(item.date).endOf("day").toISOString() }))} />
                         </ErrorBoundary>
                     </Card>
                 </Col>
@@ -497,7 +555,7 @@ const DashboardPage = () => {
                     {fromNow(new Date())} at {formatDateTime(new Date())}
                 </Text>
             )}
-        </>
+        </div>
     );
 };
 

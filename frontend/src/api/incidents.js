@@ -37,6 +37,19 @@ export const incidentApi = {
 
     removeLink: (id, linkId) => client.delete(`/incidents/${id}/links/${linkId}`),
 
+    listCorrelationSuggestions: (id) => client.get(`/incidents/${id}/correlation-suggestions`),
+
+    reviewCorrelationSuggestion: (id, suggestionId, payload) =>
+        client.patch(`/incidents/${id}/correlation-suggestions/${suggestionId}`, payload),
+
+    getRca: (id) => client.get(`/incidents/${id}/rca`),
+
+    saveRca: (id, payload) => client.put(`/incidents/${id}/rca`, payload),
+
+    submitRca: (id) => client.post(`/incidents/${id}/rca/submit`),
+
+    reviewRca: (id, payload) => client.patch(`/incidents/${id}/rca/review`, payload),
+
     remove: (id) => client.delete(`/incidents/${id}`),
 
     /**

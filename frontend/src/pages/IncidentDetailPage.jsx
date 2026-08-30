@@ -5,6 +5,7 @@ import {
     App,
     Button,
     Card,
+    Checkbox,
     Col,
     Descriptions,
     Divider,
@@ -39,6 +40,7 @@ import ActivityTimeline from "../components/incidents/ActivityTimeline";
 import CommentThread from "../components/incidents/CommentThread";
 import AttachmentPanel from "../components/incidents/AttachmentPanel";
 import LinkedIncidentPanel from "../components/incidents/LinkedIncidentPanel";
+import RcaPanel from "../components/incidents/RcaPanel";
 import { ErrorView, LoadingView } from "../components/common/StateViews";
 import {
     PRIORITY_OPTIONS,
@@ -78,6 +80,7 @@ const IncidentDetailPage = () => {
 
     const [resolveOpen, setResolveOpen] = useState(false);
     const [resolutionNote, setResolutionNote] = useState("");
+    const [updateLinkedChildren, setUpdateLinkedChildren] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -120,7 +123,7 @@ const IncidentDetailPage = () => {
     if (error) return <ErrorView error={error} onRetry={load} title="Could not open this incident" />;
     if (!payload) return null;
 
-    const { incident, comments, activity, attachments, permissions } = payload;
+    const { incident, comments, activity, attachments, permissions, correlation, rca } = payload;
 
     /** Wraps an action so every one gets the same loading/refresh/error handling. */
     const runAction = async (action, successMessage) => {
@@ -178,6 +181,7 @@ const IncidentDetailPage = () => {
                 incidentApi.updateStatus(id, {
                     status: STATUS.RESOLVED,
                     resolutionNote: resolutionNote.trim() || undefined,
+                    updateLinkedChildren,
                 }),
             "Incident marked as resolved"
         );
@@ -185,6 +189,7 @@ const IncidentDetailPage = () => {
         if (done) {
             setResolveOpen(false);
             setResolutionNote("");
+            setUpdateLinkedChildren(false);
         }
     };
 
@@ -369,6 +374,11 @@ const IncidentDetailPage = () => {
                                             onChange={load}
                                         />
                                     ),
+                                },
+                                {
+                                    key: "rca",
+                                    label: "Root cause analysis",
+                                    children: <RcaPanel incidentId={id} rca={rca} onChange={load} />,
                                 },
                                 {
                                     key: "activity",
@@ -575,6 +585,17 @@ const IncidentDetailPage = () => {
                 <Text type="secondary">
                     A short note on what fixed it helps whoever sees this incident next.
                 </Text>
+
+                {correlation?.childCount > 0 && (
+                    <Alert
+                        type="warning"
+                        showIcon
+                        style={{ marginTop: 12 }}
+                        message={`This major incident has ${correlation.childCount} linked child incident${correlation.childCount === 1 ? "" : "s"}.`}
+                        description={<Checkbox checked={updateLinkedChildren} onChange={(event) => setUpdateLinkedChildren(event.target.checked)}>Also resolve open child incidents</Checkbox>}
+                    />
+                )}
+
 
                 <TextArea
                     rows={4}

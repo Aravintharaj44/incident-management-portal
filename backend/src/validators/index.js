@@ -212,6 +212,7 @@ const incidentValidators = {
         body("status")
             .isIn(STATUS_VALUES)
             .withMessage(`Status must be one of: ${STATUS_VALUES.join(", ")}`),
+        body("updateLinkedChildren").optional().isBoolean().withMessage("updateLinkedChildren must be a boolean"),
         body("resolutionNote")
             .optional()
             .trim()
@@ -248,6 +249,18 @@ const incidentValidators = {
     ],
 };
 
+
+const rcaValidators = {
+    save: [
+        param("id").isMongoId().withMessage("Invalid incident ID"),
+        body("rootCauseCategory").optional().isIn(["people", "process", "technology", "vendor", "security", "other"]),
+        body("rootCauseDescription").optional().trim().isLength({ max: 5000 }),
+        body("correctiveActions").optional().trim().isLength({ max: 5000 }),
+        body("preventiveActions").optional().trim().isLength({ max: 5000 }),
+    ],
+    byIncident: [param("id").isMongoId().withMessage("Invalid incident ID")],
+    review: [param("id").isMongoId().withMessage("Invalid incident ID"), body("status").isIn(["approved", "returned"]), body("reviewComment").optional().trim().isLength({ max: 2000 })],
+};
 const commentValidators = {
     create: [
         param("incidentId").isMongoId().withMessage("Not a valid incident id"),
@@ -287,6 +300,7 @@ const incidentLinkValidator = {
                 "Related",
                 "Duplicate",
                 "Caused-By",
+                "Child-Of",
             ])
             .withMessage(
                 "Relationship type must be Related, Duplicate, or Caused-By"
@@ -299,6 +313,13 @@ const incidentLinkValidator = {
             .withMessage("Invalid incident ID"),
     ],
 
+
+    reviewSuggestion: [
+        param("id").isMongoId().withMessage("Invalid incident ID"),
+        param("suggestionId").isMongoId().withMessage("Invalid suggestion ID"),
+        body("action").isIn(["confirm", "dismiss"]).withMessage("Action must be confirm or dismiss"),
+        body("relationshipType").optional().isIn(["Related", "Duplicate", "Caused-By"]).withMessage("Invalid relationship type"),
+    ],
     remove: [
         param("id")
             .isMongoId()
@@ -316,6 +337,7 @@ module.exports = {
     departmentValidators,
     incidentValidators,
     commentValidators,
+    rcaValidators,
     objectId,
     incidentLinkValidator
 };

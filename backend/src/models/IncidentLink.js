@@ -4,6 +4,7 @@ const RELATIONSHIP_TYPES = [
     "Related",
     "Duplicate",
     "Caused-By",
+    "Child-Of",
 ];
 
 const incidentLinkSchema = new mongoose.Schema(

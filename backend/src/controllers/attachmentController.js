@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const Attachment = require("../models/Attachment");
+const RootCauseAnalysis = require("../models/RootCauseAnalysis");
 const Incident = require("../models/Incident");
 const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
@@ -53,9 +54,14 @@ const uploadAttachments = asyncHandler(async (req, res) => {
         throw error;
     }
 
+    const rca = req.params.rcaId ? await RootCauseAnalysis.findOne({ _id: req.params.rcaId, incident: incident._id }) : null;
+    if (req.params.rcaId && !rca) throw ApiError.notFound("RCA not found for this incident");
+
+
     const created = await Attachment.insertMany(
         req.files.map((file) => ({
             incident: incident._id,
+            rca: rca?._id || null,
             originalName: file.originalname,
             storedName: file.filename,
             mimeType: file.mimetype,
@@ -100,7 +106,7 @@ const uploadAttachments = asyncHandler(async (req, res) => {
 const listAttachments = asyncHandler(async (req, res) => {
     const incident = await loadViewableIncident(req.params.incidentId, req.user);
 
-    const attachments = await Attachment.find({ incident: incident._id })
+    const attachments = await Attachment.find({ incident: incident._id, ...(req.params.rcaId ? { rca: req.params.rcaId } : {}) })
         .populate("uploadedBy", "name email")
         .sort({ uploadedAt: -1 })
         .lean();
