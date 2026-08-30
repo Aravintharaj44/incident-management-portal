@@ -100,6 +100,11 @@ const AppLayout = () => {
                             icon: <AppstoreOutlined />,
                             label: <Link to="/admin/categories">Categories</Link>,
                         },
+                        {
+                            key: "/admin/departments",
+                            icon: <TeamOutlined />,
+                            label: <Link to="/admin/departments">Departments</Link>,
+                        },
                     ],
                 }
             );
@@ -119,6 +124,7 @@ const AppLayout = () => {
         if (pathname.startsWith("/incidents")) return ["/incidents"];
         if (pathname.startsWith("/admin/users")) return ["/admin/users"];
         if (pathname.startsWith("/admin/categories")) return ["/admin/categories"];
+        if (pathname.startsWith("/admin/departments")) return ["/admin/departments"];
 
         return [pathname];
     }, [location]);

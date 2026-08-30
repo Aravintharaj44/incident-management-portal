@@ -29,6 +29,7 @@ const MyQueuePage = lazy(() => import("./pages/MyQueuePage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
 const CategoriesPage = lazy(() => import("./pages/admin/CategoriesPage"));
+const DepartmentsPage = lazy(() => import("./pages/admin/DepartmentsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const ForbiddenPage = lazy(() => import("./pages/ForbiddenPage"));
 
@@ -70,6 +71,7 @@ const App = () => (
                         <Route element={<RoleRoute allowedRoles={[ROLES.ADMIN]} />}>
                             <Route path="/admin/users" element={<UsersPage />} />
                             <Route path="/admin/categories" element={<CategoriesPage />} />
+                            <Route path="/admin/departments" element={<DepartmentsPage />} />
                         </Route>
 
                         <Route path="*" element={<NotFoundPage />} />

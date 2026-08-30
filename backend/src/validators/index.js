@@ -147,6 +147,30 @@ const categoryValidators = {
     byId: [objectId("id")],
 };
 
+const departmentValidators = {
+    create: [
+        body("title").trim().isLength({ min: 5, max: 140 }).withMessage("Title must be between 5 and 140 characters").customSanitizer(stripTags),
+        body("description").trim().isLength({ min: 10, max: 5000 }).withMessage("Description must be between 10 and 5000 characters"),
+        body("isActive").optional().isBoolean().withMessage("isActive must be true or false"),
+        body("headOfDepartment").isMongoId().withMessage("Please select a valid head of department"),
+        body("categories").isArray({ min: 1 }).withMessage("Select at least one category"),
+        body("categories.*").isMongoId().withMessage("Each category must be a valid id"),
+        body("members").isArray({ min: 1 }).withMessage("Select at least one member"),
+        body("members.*").isMongoId().withMessage("Each member must be a valid id"),
+    ],
+    update: [
+        objectId("id"),
+        body("title").optional().trim().isLength({ min: 5, max: 140 }).withMessage("Title must be between 5 and 140 characters").customSanitizer(stripTags),
+        body("description").optional().trim().isLength({ min: 10, max: 5000 }).withMessage("Description must be between 10 and 5000 characters"),
+        body("isActive").optional().isBoolean().withMessage("isActive must be true or false"),
+        body("headOfDepartment").optional().isMongoId().withMessage("Please select a valid head of department"),
+        body("categories").optional().isArray({ min: 1 }).withMessage("Select at least one category"),
+        body("categories.*").optional().isMongoId().withMessage("Each category must be a valid id"),
+        body("members").optional().isArray({ min: 1 }).withMessage("Select at least one member"),
+        body("members.*").optional().isMongoId().withMessage("Each member must be a valid id"),
+    ],
+    byId: [objectId("id")],
+};
 const incidentValidators = {
     create: [
         body("title")
@@ -289,6 +313,7 @@ module.exports = {
     authValidators,
     userValidators,
     categoryValidators,
+    departmentValidators,
     incidentValidators,
     commentValidators,
     objectId,

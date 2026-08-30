@@ -1,0 +1,12 @@
+const express = require("express");
+const protect = require("../middleware/auth");
+const authorize = require("../middleware/roleCheck");
+const validate = require("../middleware/validate");
+const { departmentValidators } = require("../validators");
+const { ROLES } = require("../constants");
+const controller = require("../controllers/departmentController");
+const router = express.Router();
+router.use(protect, authorize(ROLES.ADMIN));
+router.route("/").get(controller.listDepartments).post(departmentValidators.create, validate, controller.createDepartment);
+router.route("/:id").get(departmentValidators.byId, validate, controller.getDepartment).patch(departmentValidators.update, validate, controller.updateDepartment).delete(departmentValidators.byId, validate, controller.deleteDepartment);
+module.exports = router;

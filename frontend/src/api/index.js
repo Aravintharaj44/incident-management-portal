@@ -5,6 +5,7 @@ export { commentApi } from "./comments";
 export { attachmentApi } from "./attachments";
 export { userApi } from "./users";
 export { categoryApi } from "./categories";
+export { departmentApi } from "./departments";
 export { dashboardApi } from "./dashboard";
 export { notificationApi } from "./notifications";
 export { metaApi } from "./meta";

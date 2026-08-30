@@ -8,6 +8,7 @@ const commentRoutes = require("./commentRoutes");
 const attachmentRoutes = require("./attachmentRoutes");
 const dashboardRoutes = require("./dashboardRoutes");
 const notificationRoutes = require("./notificationRoutes");
+const departmentRoutes = require("./departmentRoutes");
 
 /**
  * Single mount point for the whole API. app.js only has to mount this one
@@ -23,5 +24,6 @@ router.use("/comments", commentRoutes);
 router.use("/attachments", attachmentRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/notifications", notificationRoutes);
+router.use("/departments", departmentRoutes);
 
 module.exports = router;
