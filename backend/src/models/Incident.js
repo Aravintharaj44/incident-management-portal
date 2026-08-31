@@ -106,6 +106,15 @@ const incidentSchema = new mongoose.Schema(
         resolvedAt: { type: Date, default: null },
         closedAt: { type: Date, default: null },
 
+        // Optional reference to the Problem this incident belongs to (FR4-04).
+        // Nullable so existing incidents continue to work untouched.
+        problemId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Problem",
+            default: null,
+            index: true,
+        },
+
         // Free-text resolution note captured when moving to Resolved.
         resolutionNote: {
             type: String,

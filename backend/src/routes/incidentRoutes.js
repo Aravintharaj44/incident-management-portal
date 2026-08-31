@@ -21,6 +21,8 @@ const {
     assignIncident,
     deleteIncident,
     exportIncidents,
+    linkProblem,
+    unlinkProblem,
 } = require("../controllers/incidentController");
 
 const {
@@ -121,6 +123,20 @@ router.patch(
     incidentValidators.assign,
     validate,
     assignIncident
+);
+
+/** Incident <-> Problem linking (FR4-04), staff-side entry points. */
+router.post(
+    "/:id/problem",
+    incidentValidators.linkProblem,
+    validate,
+    linkProblem
+);
+router.delete(
+    "/:id/problem",
+    incidentValidators.byId,
+    validate,
+    unlinkProblem
 );
 
 /** RCA */

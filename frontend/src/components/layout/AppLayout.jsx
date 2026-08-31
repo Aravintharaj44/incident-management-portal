@@ -13,9 +13,11 @@ import {
     Typography,
 } from "antd";
 import {
+    AlertOutlined,
     ApiOutlined,
     AppstoreOutlined,
     BarsOutlined,
+    BulbOutlined,
     DashboardOutlined,
     LogoutOutlined,
     MenuFoldOutlined,
@@ -81,6 +83,16 @@ const AppLayout = () => {
                 icon: <SafetyCertificateOutlined />,
                 label: <Link to="/my-queue">My Queue</Link>,
             });
+            items.push({
+                key: "/problems",
+                icon: <AlertOutlined />,
+                label: <Link to="/problems">Problems</Link>,
+            });
+            items.push({
+                key: "/known-errors",
+                icon: <BulbOutlined />,
+                label: <Link to="/known-errors">Known Errors</Link>,
+            });
         }
 
         items.push({
@@ -129,6 +141,8 @@ const AppLayout = () => {
 
         if (pathname.startsWith("/incidents/new")) return ["/incidents/new"];
         if (pathname.startsWith("/incidents")) return ["/incidents"];
+        if (pathname.startsWith("/problems")) return ["/problems"];
+        if (pathname.startsWith("/known-errors")) return ["/known-errors"];
         if (pathname.startsWith("/admin/users")) return ["/admin/users"];
         if (pathname.startsWith("/admin/categories")) return ["/admin/categories"];
         if (pathname.startsWith("/admin/departments")) return ["/admin/departments"];

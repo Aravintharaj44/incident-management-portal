@@ -9,6 +9,7 @@ const attachmentRoutes = require("./attachmentRoutes");
 const dashboardRoutes = require("./dashboardRoutes");
 const notificationRoutes = require("./notificationRoutes");
 const departmentRoutes = require("./departmentRoutes");
+const problemRoutes = require("./problemRoutes");
 
 /**
  * Single mount point for the whole API. app.js only has to mount this one
@@ -25,5 +26,7 @@ router.use("/attachments", attachmentRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/departments", departmentRoutes);
+router.use("/problems", problemRoutes);
+router.use("/known-errors", problemRoutes.kedb);
 
 module.exports = router;

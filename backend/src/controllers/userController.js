@@ -31,6 +31,7 @@ const listUsers = asyncHandler(async (req, res) => {
         User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
         User.countDocuments(filter),
     ]);
+    Logger.info(JSON.stringify(users));
 
     return paginatedResponse(res, "Users retrieved", users, { page, limit, total });
 });

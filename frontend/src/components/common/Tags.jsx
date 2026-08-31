@@ -13,6 +13,8 @@ import {
     PRIORITY,
     PRIORITY_COLORS,
     PRIORITY_LABELS,
+    PROBLEM_STATUS_COLORS,
+    PROBLEM_STATUS_LABELS,
     ROLE_COLORS,
     ROLE_LABELS,
     SLA_COLORS,
@@ -61,6 +63,13 @@ export const PriorityTag = ({ priority }) => (
 export const RoleTag = ({ role }) => (
     <Tag color={ROLE_COLORS[role]} style={{ margin: 0 }}>
         {ROLE_LABELS[role] || role}
+    </Tag>
+);
+
+/** V4 Problem status badge (FR4-01). */
+export const ProblemStatusTag = ({ status }) => (
+    <Tag color={PROBLEM_STATUS_COLORS[status]} style={{ margin: 0 }}>
+        {PROBLEM_STATUS_LABELS[status] || status}
     </Tag>
 );
 

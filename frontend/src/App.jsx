@@ -26,6 +26,10 @@ const IncidentListPage = lazy(() => import("./pages/IncidentListPage"));
 const IncidentCreatePage = lazy(() => import("./pages/IncidentCreatePage"));
 const IncidentDetailPage = lazy(() => import("./pages/IncidentDetailPage"));
 const MyQueuePage = lazy(() => import("./pages/MyQueuePage"));
+const ProblemsPage = lazy(() => import("./pages/problems/ProblemsPage"));
+const ProblemCreatePage = lazy(() => import("./pages/problems/ProblemCreatePage"));
+const ProblemDetailPage = lazy(() => import("./pages/problems/ProblemDetailPage"));
+const KnownErrorsPage = lazy(() => import("./pages/problems/KnownErrorsPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const ApiDocsPage = lazy(() => import("./pages/ApiDocsPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
@@ -67,6 +71,12 @@ const App = () => (
                             element={<RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.AGENT]} />}
                         >
                             <Route path="/my-queue" element={<MyQueuePage />} />
+
+                            {/* V4 - Problem Management (FR4-01..06) */}
+                            <Route path="/problems" element={<ProblemsPage />} />
+                            <Route path="/problems/new" element={<ProblemCreatePage />} />
+                            <Route path="/problems/:id" element={<ProblemDetailPage />} />
+                            <Route path="/known-errors" element={<KnownErrorsPage />} />
                         </Route>
 
                         {/* Admin only (FR-13) */}

@@ -31,6 +31,13 @@ const ACTION_META = {
     reopened: { icon: <RedoOutlined />, color: "red", label: "reopened this incident" },
     linked: { icon: <LinkOutlined />, color: "blue", label: "linked this incident" },
     unlinked: { icon: <DisconnectOutlined />, color: "grey", label: "removed an incident link" },
+    // V4 - Problem Management (FR4)
+    problem_created: { icon: <PlusCircleOutlined />, color: "blue", label: "created this problem" },
+    problem_updated: { icon: <EditOutlined />, color: "blue", label: "updated the problem" },
+    problem_status_changed: { icon: <SwapOutlined />, color: "gold", label: "changed the problem status" },
+    problem_owner_changed: { icon: <UserSwitchOutlined />, color: "green", label: "changed the problem owner" },
+    incident_problem_linked: { icon: <LinkOutlined />, color: "purple", label: "linked this to a problem" },
+    incident_problem_unlinked: { icon: <DisconnectOutlined />, color: "grey", label: "removed this from a problem" },
 };
 
 const ActivityTimeline = ({ activity = [] }) => {

@@ -12,7 +12,18 @@ const activityLogSchema = new mongoose.Schema(
         incident: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Incident",
-            required: true,
+            default: null,
+            index: true,
+        },
+
+        // V4 - Problem Management (FR4). An entry belongs to either an
+        // incident (existing) or a problem. `incident` is nullable so
+        // existing incident timelines are untouched while problem entries set
+        // this optional reference instead.
+        problem: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Problem",
+            default: null,
             index: true,
         },
 
@@ -41,6 +52,14 @@ const activityLogSchema = new mongoose.Schema(
     }
 );
 
+/** Every audit entry must hang off an incident or a problem, never neither. */
+activityLogSchema.pre("validate", function requireAnchor() {
+    if (!this.incident && !this.problem) {
+        this.invalidate("incident", "An activity entry must reference an incident or a problem");
+    }
+});
+
 activityLogSchema.index({ incident: 1, createdAt: -1 });
+activityLogSchema.index({ problem: 1, createdAt: -1 });
 
 module.exports = mongoose.model("ActivityLog", activityLogSchema);

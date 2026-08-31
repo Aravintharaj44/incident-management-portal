@@ -87,6 +87,42 @@ const ACTIVITY_ACTIONS = {
     REOPENED: "reopened",
     LINKED: "linked",
     UNLINKED: "unlinked",
+    // V4 - Problem Management (FR4)
+    PROBLEM_CREATED: "problem_created",
+    PROBLEM_UPDATED: "problem_updated",
+    PROBLEM_STATUS_CHANGED: "problem_status_changed",
+    PROBLEM_OWNER_CHANGED: "problem_owner_changed",
+    INCIDENT_PROBLEM_LINKED: "incident_problem_linked",
+    INCIDENT_PROBLEM_UNLINKED: "incident_problem_unlinked",
+};
+
+/** Problem Management statuses (FR4-01). */
+const PROBLEM_STATUS = {
+    NEW: "new",
+    INVESTIGATING: "investigating",
+    KNOWN_ERROR: "known_error",
+    RESOLVED: "resolved",
+};
+
+const PROBLEM_STATUS_VALUES = Object.values(PROBLEM_STATUS);
+
+/**
+ * Allowed Problem status transitions (FR4 status workflow). The required path
+ * is New -> Investigating -> Known Error -> Resolved, plus reopen support
+ * consistent with the project's workflow architecture.
+ */
+const PROBLEM_STATUS_TRANSITIONS = {
+    [PROBLEM_STATUS.NEW]: [PROBLEM_STATUS.INVESTIGATING, PROBLEM_STATUS.KNOWN_ERROR, PROBLEM_STATUS.RESOLVED],
+    [PROBLEM_STATUS.INVESTIGATING]: [PROBLEM_STATUS.KNOWN_ERROR, PROBLEM_STATUS.RESOLVED, PROBLEM_STATUS.NEW],
+    [PROBLEM_STATUS.KNOWN_ERROR]: [PROBLEM_STATUS.RESOLVED, PROBLEM_STATUS.INVESTIGATING],
+    [PROBLEM_STATUS.RESOLVED]: [PROBLEM_STATUS.INVESTIGATING, PROBLEM_STATUS.KNOWN_ERROR],
+};
+
+const PROBLEM_STATUS_LABELS = {
+    [PROBLEM_STATUS.NEW]: "New",
+    [PROBLEM_STATUS.INVESTIGATING]: "Investigating",
+    [PROBLEM_STATUS.KNOWN_ERROR]: "Known Error",
+    [PROBLEM_STATUS.RESOLVED]: "Resolved",
 };
 
 const NOTIFICATION_TYPES = {
@@ -135,4 +171,26 @@ module.exports = {
     SLA_HOURS,
     ACTIVITY_ACTIONS,
     NOTIFICATION_TYPES,
+};
+
+module.exports = {
+    ROLES,
+    ROLE_VALUES,
+    ROLE_LABELS,
+    STATUS,
+    STATUS_VALUES,
+    STATUS_LABELS,
+    STATUS_TRANSITIONS,
+    TERMINAL_STATUSES,
+    PRIORITY,
+    PRIORITY_VALUES,
+    PRIORITY_LABELS,
+    PRIORITY_WEIGHT,
+    SLA_HOURS,
+    ACTIVITY_ACTIONS,
+    NOTIFICATION_TYPES,
+    PROBLEM_STATUS,
+    PROBLEM_STATUS_VALUES,
+    PROBLEM_STATUS_LABELS,
+    PROBLEM_STATUS_TRANSITIONS,
 };

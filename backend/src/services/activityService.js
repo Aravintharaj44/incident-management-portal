@@ -10,6 +10,7 @@ const logger = require("../utils/logger");
  */
 const record = async ({
     incident,
+    problem,
     action,
     performedBy,
     field = null,
@@ -20,6 +21,7 @@ const record = async ({
     try {
         return await ActivityLog.create({
             incident,
+            problem,
             action,
             performedBy,
             field,
@@ -50,4 +52,12 @@ const listForIncident = (incidentId, { limit = 200 } = {}) =>
         .limit(limit)
         .lean();
 
-module.exports = { record, recordMany, listForIncident };
+/** V4 - Problem timeline (FR4 activity). */
+const listForProblem = (problemId, { limit = 200 } = {}) =>
+    ActivityLog.find({ problem: problemId })
+        .populate("performedBy", "name email role")
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean();
+
+module.exports = { record, recordMany, listForIncident, listForProblem };

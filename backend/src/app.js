@@ -95,14 +95,20 @@ app.get("/api/health", (_req, res) => {
 // Swagger UI and the raw OpenAPI spec. The full documentation is defined in
 // src/config/swagger.js and simply described here - nothing about how the
 // existing routes handle requests is changed.
+// app.use(
+//     "/api-docs",
+//     swaggerUi.serve,
+//     swaggerUi.setup(swaggerSpec, {
+//         customSiteTitle: "Incident Management API - Swagger",
+//     })
+// );
 app.use(
     "/api-docs",
     swaggerUi.serve,
-    swaggerUi.setup(swaggerSpec, {
-        customSiteTitle: "Incident Management API - Swagger",
-    })
+    swaggerUi.setup(swaggerSpec)
 );
 
+ 
 app.get("/api/v1/meta", (_req, res) => {
     res.json({
         success: true,

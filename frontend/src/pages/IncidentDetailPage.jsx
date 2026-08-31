@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
     Alert,
     App,
@@ -31,10 +31,10 @@ import {
     ReloadOutlined,
     UserSwitchOutlined,
 } from "@ant-design/icons";
-import { categoryApi, incidentApi } from "../api";
+import { categoryApi, incidentApi, problemApi } from "../api";
 import { useAuth } from "../hooks/useAuth";
 import PageHeader from "../components/common/PageHeader";
-import { PriorityTag, SlaTag, StatusTag } from "../components/common/Tags";
+import { PriorityTag, ProblemStatusTag, SlaTag, StatusTag } from "../components/common/Tags";
 import UserBadge from "../components/common/UserBadge";
 import ActivityTimeline from "../components/incidents/ActivityTimeline";
 import CommentThread from "../components/incidents/CommentThread";
@@ -74,6 +74,11 @@ const IncidentDetailPage = () => {
     const [resolveOpen, setResolveOpen] = useState(false);
     const [resolutionNote, setResolutionNote] = useState("");
     const [updateLinkedChildren, setUpdateLinkedChildren] = useState(false);
+
+    // FR4-04: link this incident to a Problem.
+    const [problems, setProblems] = useState([]);
+    const [problemOpen, setProblemOpen] = useState(false);
+    const [selectedProblem, setSelectedProblem] = useState(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -126,7 +131,7 @@ const IncidentDetailPage = () => {
     if (error) return <ErrorView error={error} onRetry={load} title="Could not open this incident" />;
     if (!payload) return null;
 
-    const { incident, comments, activity, attachments, permissions, correlation, rca } = payload;
+    const { incident, comments, activity, attachments, permissions, correlation, rca, problem, rcaSource } = payload;
 
     /** Wraps an action so every one gets the same loading/refresh/error handling. */
     const runAction = async (action, successMessage) => {
@@ -194,6 +199,38 @@ const IncidentDetailPage = () => {
             setResolutionNote("");
             setUpdateLinkedChildren(false);
         }
+    };
+
+    const openProblemModal = async () => {
+        try {
+            const response = await problemApi.list({ limit: 100 });
+            setProblems(response.data.items);
+            setProblemOpen(true);
+        } catch (err) {
+            message.error(err.message);
+        }
+    };
+
+    const handleLinkProblem = async () => {
+        if (!selectedProblem) return;
+        const done = await runAction(
+            () => incidentApi.linkProblem(id, selectedProblem),
+            "Incident linked to the problem"
+        );
+        if (done) {
+            setProblemOpen(false);
+            setSelectedProblem(null);
+        }
+    };
+
+    const handleUnlinkProblem = () => {
+        modal.confirm({
+            title: "Remove this incident from its problem?",
+            content: "The incident is kept - it is simply no longer grouped under the problem.",
+            okText: "Remove",
+            okButtonProps: { danger: true },
+            onOk: () => runAction(() => incidentApi.unlinkProblem(id), "Incident removed from the problem"),
+        });
     };
 
 const handleDepartmentChange = (department) =>
@@ -468,6 +505,63 @@ const handleDepartmentChange = (department) =>
                         </Descriptions>
                     </Card>
 
+                    {/* Related problem (FR4-04) */}
+                    <Card
+                        title={
+                            <Space size={6}>
+                                <LinkOutlined />
+                                Related problem
+                            </Space>
+                        }
+                        size="small"
+                        style={{ marginTop: 16 }}
+                    >
+                        {problem ? (
+                            <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                                <Link to={`/problems/${problem._id}`}>
+                                    <Alert
+                                        type={problem.status === "known_error" ? "warning" : "info"}
+                                        showIcon
+                                        message={problem.title}
+                                        description={
+                                            <Space direction="vertical" size={4}>
+                                                <Space size={6}>
+                                                    <ProblemStatusTag status={problem.status} />
+                                                    <Text strong>{problem.problemNumber}</Text>
+                                                </Space>
+                                                <span style={{ fontSize: 12 }}>
+                                                    {rcaSource === "problem" && rca
+                                                        ? "Displaying this problem's root cause analysis."
+                                                        : problem.workaround
+                                                          ? `Workaround: ${problem.workaround}`
+                                                          : "No workaround recorded."}
+                                                </span>
+                                            </Space>
+                                        }
+                                    />
+                                </Link>
+                                {permissions.canManageProblems && (
+                                    <Button size="small" danger icon={<LinkOutlined />} onClick={handleUnlinkProblem}>
+                                        Remove from problem
+                                    </Button>
+                                )}
+                            </Space>
+                        ) : (
+                            <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                                <Text type="secondary">
+                                    {permissions.canManageProblems
+                                        ? "This incident is not yet grouped under a problem."
+                                        : "This incident is not linked to a problem."}
+                                </Text>
+                                {permissions.canManageProblems && (
+                                    <Button icon={<LinkOutlined />} onClick={openProblemModal}>
+                                        Link to a problem
+                                    </Button>
+                                )}
+                            </Space>
+                        )}
+                    </Card>
+
                     {/* Assignment (FR-05) */}
                     {permissions.canAssign && (
                         <Card
@@ -545,6 +639,37 @@ const handleDepartmentChange = (department) =>
                     )}
                 </Col>
             </Row>
+
+            {/* --- Link to a problem (FR4-04) ------------------------ */}
+            <Modal
+                title="Link to a problem"
+                open={problemOpen}
+                onCancel={() => {
+                    setProblemOpen(false);
+                    setSelectedProblem(null);
+                }}
+                onOk={handleLinkProblem}
+                confirmLoading={acting}
+                okText="Link problem"
+                okButtonProps={{ disabled: !selectedProblem }}
+                destroyOnHidden
+            >
+                <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+                    Group this incident under a problem so the shared cause can be tracked.
+                </Text>
+                <Select
+                    style={{ width: "100%" }}
+                    placeholder="Select a problem"
+                    showSearch
+                    optionFilterProp="label"
+                    value={selectedProblem}
+                    onChange={setSelectedProblem}
+                    options={problems.map((item) => ({
+                        value: item._id,
+                        label: `${item.problemNumber} - ${item.title}`,
+                    }))}
+                />
+            </Modal>
 
             {/* --- Edit modal ------------------------------------------- */}
             <Modal

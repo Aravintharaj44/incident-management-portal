@@ -1,4 +1,4 @@
-const { ROLES, STATUS, STATUS_TRANSITIONS } = require("../constants");
+const { ROLES, STATUS, STATUS_TRANSITIONS, PROBLEM_STATUS_TRANSITIONS } = require("../constants");
 const ApiError = require("../utils/ApiError");
 
 /**
@@ -66,6 +66,41 @@ const canAssign = (user, incident) => {
 const canDelete = (user) => isAdmin(user);
 
 /**
+ * V4 - Problem Management (FR4-01/03/05). Problems and Known Errors are a
+ * support-team concern: Admins and Agents can create/manage/own Problems and
+ * browse the KEDB. End users never gain these capabilities.
+ */
+const isStaff = (user) => isAdmin(user) || isAgent(user);
+
+const canManageProblems = (user) => isAdmin(user) || isAgent(user);
+
+const canOwnProblem = (user) =>
+    isStaff(user) && Boolean(user.isActive !== false);
+
+/** Staff see all Problems (mirrors the incident queue rules). */
+const problemVisibilityFilter = (user) => {
+    if (isAdmin(user) || isAgent(user)) return {};
+    // Defensive: a non-staff user should never reach a problem query.
+    return { _id: { $exists: false } };
+};
+
+/** V4 - Problem status transition guard (FR4 status workflow). */
+const assertProblemTransition = (currentStatus, nextStatus) => {
+    if (currentStatus === nextStatus) {
+        throw ApiError.badRequest(`Problem is already '${nextStatus}'`);
+    }
+
+    const allowed = PROBLEM_STATUS_TRANSITIONS[currentStatus] || [];
+
+    if (!allowed.includes(nextStatus)) {
+        throw ApiError.badRequest(
+            `Cannot move a problem from '${currentStatus}' to '${nextStatus}'. ` +
+                `Allowed next steps: ${allowed.join(", ") || "none"}`
+        );
+    }
+};
+
+/**
  * Only an Admin decides which department an incident belongs to. Support
  * Agents work inside the department already assigned by an Admin.
  */
@@ -122,4 +157,9 @@ module.exports = {
     canUploadAttachment,
     canDeleteAttachment,
     assertValidTransition,
+    isStaff,
+    canManageProblems,
+    canOwnProblem,
+    problemVisibilityFilter,
+    assertProblemTransition,
 };

@@ -52,6 +52,11 @@ export const incidentApi = {
 
     reviewRca: (id, payload) => client.patch(`/incidents/${id}/rca/review`, payload),
 
+    /** FR4-04: link this incident to an existing Problem. */
+    linkProblem: (id, problemId) => client.post(`/incidents/${id}/problem`, { problemId }),
+
+    unlinkProblem: (id) => client.delete(`/incidents/${id}/problem`),
+
     remove: (id) => client.delete(`/incidents/${id}`),
 
     /**

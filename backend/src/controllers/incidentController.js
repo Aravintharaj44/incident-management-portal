@@ -17,6 +17,7 @@ const permissions = require("../services/permissionService");
 const slaService = require("../services/slaService");
 const IncidentLink = require("../models/IncidentLink");
 const RootCauseAnalysis = require("../models/RootCauseAnalysis");
+const Problem = require("../models/Problem");
 const Department = require("../models/Department");
 const DepartmentUser = require("../models/DepartmentUser");
 const {
@@ -144,6 +145,7 @@ const POPULATE = [
     { path: "reportedBy", select: "name email role" },
     { path: "assignedTo", select: "name email role" },
     { path: "department", select: "title categories isActive" },
+    { path: "problemId", select: "problemNumber title status workaround" },
 ];
 
 /**
@@ -204,13 +206,29 @@ const getIncident = asyncHandler(async (req, res) => {
         IncidentLink.countDocuments({ toIncidentId: incident._id, relationshipType: "Child-Of" }),
     ]);
 
+    // FR4-04: an incident linked to a Problem can reference the Problem's RCA
+    // instead of requiring a duplicate one. The problem-scoped RCA is surfaced
+    // read-only when the incident has no RCA of its own.
+    let effectiveRca = null;
+    if (rca) {
+        effectiveRca = rca;
+    } else if (incident.problemId) {
+        effectiveRca = await RootCauseAnalysis.findOne({ problem: incident.problemId._id })
+            .populate("author reviewedBy", "name email role")
+            .lean();
+    }
+
     return successResponse(res, 200, "Incident retrieved", {
         incident: decorate(incident.toObject()),
+        problem: incident.problemId,
         comments,
         activity,
         attachments,
         correlation: { childCount, isMajorIncident: incident.isMajorIncident || childCount > 0 },
-        rca,
+        rca: effectiveRca,
+        // If a problem RCA is being used because there is no incident RCA, tell
+        // the UI where it came from so it can label it.
+        rcaSource: !rca && effectiveRca ? "problem" : "incident",
         // Lets the UI enable/disable controls using the same rules the API enforces.
         permissions: {
             canEdit: permissions.canEditDetails(req.user, incident),
@@ -219,6 +237,7 @@ const getIncident = asyncHandler(async (req, res) => {
             canDelete: permissions.canDelete(req.user),
             canManageLinks: permissions.canManageLinks(req.user),
             canUseInternalNotes: permissions.canUseInternalNotes(req.user),
+            canManageProblems: permissions.canManageProblems(req.user),
         },
     });
 });
@@ -791,6 +810,92 @@ const exportIncidents = asyncHandler(async (req, res) => {
     return sendCsv(res, `incidents-${stamp}.csv`, csv);
 });
 
+/**
+ * POST /api/v1/incidents/:id/problem (FR4-04)
+ * Link this incident to an existing Problem. Staff only; the backend validates
+ * both records and audits the change on both timelines.
+ */
+const linkProblem = asyncHandler(async (req, res) => {
+    const incident = await Incident.findById(req.params.id).populate(POPULATE);
+    if (!incident) throw ApiError.notFound("Incident not found");
+    if (!permissions.canView(req.user, incident)) throw ApiError.forbidden("You do not have access to this incident");
+    if (!permissions.canManageProblems(req.user)) throw ApiError.forbidden("Only support staff can link an incident to a problem");
+
+    const { problemId } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(problemId)) throw ApiError.badRequest("Invalid problem ID");
+
+    const problem = await Problem.findById(problemId);
+    if (!problem) throw ApiError.notFound("Problem not found");
+
+    if (incident.problemId) {
+        throw ApiError.badRequest("This incident is already linked to a problem");
+    }
+
+    incident.problemId = problem._id;
+    await incident.save();
+
+    // Derive the problem category from its first linked incident if it has none.
+    if (!problem.category) {
+        const firstIncident = await Incident.findOne({ problemId: problem._id }).select("category").lean();
+        if (firstIncident && firstIncident.category) {
+            problem.category = firstIncident.category;
+            await problem.save().catch(() => {});
+        }
+    }
+
+    await activityService.record({
+        incident: incident._id,
+        action: ACTIVITY_ACTIONS.INCIDENT_PROBLEM_LINKED,
+        performedBy: req.user._id,
+        field: "problemId",
+        oldValue: "None",
+        newValue: problem.problemNumber,
+    });
+    await activityService.record({
+        problem: problem._id,
+        action: ACTIVITY_ACTIONS.INCIDENT_PROBLEM_LINKED,
+        performedBy: req.user._id,
+        note: `Linked to ${incident.incidentNumber}`,
+    });
+
+    const populated = await Incident.findById(incident._id).populate(POPULATE).lean();
+    return successResponse(res, 200, `Incident linked to ${problem.problemNumber}`, { incident: decorate(populated) });
+});
+
+/**
+ * DELETE /api/v1/incidents/:id/problem (FR4-04)
+ * Unlink this incident from its Problem.
+ */
+const unlinkProblem = asyncHandler(async (req, res) => {
+    const incident = await Incident.findById(req.params.id).populate(POPULATE);
+    if (!incident) throw ApiError.notFound("Incident not found");
+    if (!permissions.canView(req.user, incident)) throw ApiError.forbidden("You do not have access to this incident");
+    if (!permissions.canManageProblems(req.user)) throw ApiError.forbidden("Only support staff can unlink an incident from a problem");
+
+    if (!incident.problemId) throw ApiError.badRequest("This incident is not linked to a problem");
+
+    const problemNumber = incident.problemId?.problemNumber || "a problem";
+    await Incident.updateOne({ _id: incident._id }, { $set: { problemId: null } });
+
+    await activityService.record({
+        incident: incident._id,
+        action: ACTIVITY_ACTIONS.INCIDENT_PROBLEM_UNLINKED,
+        performedBy: req.user._id,
+        field: "problemId",
+        oldValue: problemNumber,
+        newValue: "None",
+    });
+    await activityService.record({
+        problem: incident.problemId?._id,
+        action: ACTIVITY_ACTIONS.INCIDENT_PROBLEM_UNLINKED,
+        performedBy: req.user._id,
+        note: `Removed ${incident.incidentNumber}`,
+    });
+
+    const updated = await Incident.findById(incident._id).populate(POPULATE).lean();
+    return successResponse(res, 200, `Incident removed from ${problemNumber}`, { incident: decorate(updated) });
+});
+
 module.exports = {
     listIncidents,
     getIncident,
@@ -801,6 +906,8 @@ module.exports = {
     assignIncident,
     deleteIncident,
     exportIncidents,
+    linkProblem,
+    unlinkProblem,
     // Exported for reuse by the dashboard controller.
     buildIncidentFilter,
 };

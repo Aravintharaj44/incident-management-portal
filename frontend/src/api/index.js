@@ -9,4 +9,6 @@ export { departmentApi } from "./departments";
 export { dashboardApi } from "./dashboard";
 export { notificationApi } from "./notifications";
 export { metaApi } from "./meta";
+export { problemApi } from "./problems";
+export { knownErrorApi } from "./problems";
 export { default as client } from "./client";

@@ -127,3 +127,56 @@ export const asOptions = (labels, order) =>
 export const STATUS_OPTIONS = asOptions(STATUS_LABELS);
 export const PRIORITY_OPTIONS = asOptions(PRIORITY_LABELS, PRIORITY_ORDER);
 export const ROLE_OPTIONS = asOptions(ROLE_LABELS);
+
+/* ---------------------------------------------------------------------------
+ * V4 - Problem Management (FR4-01..06). Mirrors backend PROBLEM_STATUS.
+ * ------------------------------------------------------------------------- */
+
+export const PROBLEM_STATUS = {
+    NEW: "new",
+    INVESTIGATING: "investigating",
+    KNOWN_ERROR: "known_error",
+    RESOLVED: "resolved",
+};
+
+export const PROBLEM_STATUS_LABELS = {
+    [PROBLEM_STATUS.NEW]: "New",
+    [PROBLEM_STATUS.INVESTIGATING]: "Investigating",
+    [PROBLEM_STATUS.KNOWN_ERROR]: "Known Error",
+    [PROBLEM_STATUS.RESOLVED]: "Resolved",
+};
+
+export const PROBLEM_STATUS_COLORS = {
+    [PROBLEM_STATUS.NEW]: "blue",
+    [PROBLEM_STATUS.INVESTIGATING]: "gold",
+    [PROBLEM_STATUS.KNOWN_ERROR]: "purple",
+    [PROBLEM_STATUS.RESOLVED]: "green",
+};
+
+/** Order for filters/dropdowns. */
+export const PROBLEM_STATUS_ORDER = [
+    PROBLEM_STATUS.NEW,
+    PROBLEM_STATUS.INVESTIGATING,
+    PROBLEM_STATUS.KNOWN_ERROR,
+    PROBLEM_STATUS.RESOLVED,
+];
+
+export const PROBLEM_STATUS_OPTIONS = asOptions(PROBLEM_STATUS_LABELS, PROBLEM_STATUS_ORDER);
+
+/** Mirrors PROBLEM_STATUS_TRANSITIONS on the server, to grey out impossible moves. */
+export const PROBLEM_STATUS_TRANSITIONS = {
+    [PROBLEM_STATUS.NEW]: [
+        PROBLEM_STATUS.INVESTIGATING,
+        PROBLEM_STATUS.KNOWN_ERROR,
+        PROBLEM_STATUS.RESOLVED,
+    ],
+    [PROBLEM_STATUS.INVESTIGATING]: [
+        PROBLEM_STATUS.KNOWN_ERROR,
+        PROBLEM_STATUS.RESOLVED,
+        PROBLEM_STATUS.NEW,
+    ],
+    [PROBLEM_STATUS.KNOWN_ERROR]: [PROBLEM_STATUS.RESOLVED, PROBLEM_STATUS.INVESTIGATING],
+    [PROBLEM_STATUS.RESOLVED]: [PROBLEM_STATUS.INVESTIGATING, PROBLEM_STATUS.KNOWN_ERROR],
+};
+
+export const PROBLEM_STATUS_TERMINAL = [PROBLEM_STATUS.RESOLVED];

@@ -15,8 +15,10 @@ const Notification = require("../models/Notification");
 const Counter = require("../models/Counter");
 const Department = require("../models/Department");
 const DepartmentUser = require("../models/DepartmentUser");
+const Problem = require("../models/Problem");
+const RootCauseAnalysis = require("../models/RootCauseAnalysis");
 
-const { ROLES, STATUS, PRIORITY, ACTIVITY_ACTIONS } = require("../constants");
+const { ROLES, STATUS, PRIORITY, ACTIVITY_ACTIONS, PROBLEM_STATUS } = require("../constants");
 
 /**
  * Seeds a realistic demo data set so the portal can be reviewed without
@@ -218,6 +220,8 @@ const clearCollections = async () => {
         Counter.deleteMany({}),
         Department.deleteMany({}),
         DepartmentUser.deleteMany({}),
+        Problem.deleteMany({}),
+        RootCauseAnalysis.deleteMany({}),
     ]);
 
     logger.info("Cleared existing collections");
@@ -397,6 +401,110 @@ const seedIncidents = async (usersByEmail, categoriesByName, departmentsByCatego
     logger.info(`Created ${incidentCount} incidents and ${commentCount} comments`);
 };
 
+/**
+ * V4 - Problem Management demo data (FR4). Two Problems: one Known Error with
+ * a workaround, a problem-scoped RCA (reusing the existing RCA model) and a
+ * couple of linked incidents; one in "New" awaiting investigation. Links are
+ * written directly onto the incidents' problemId so the seeded set demos the
+ * incident <-> problem navigation.
+ */
+const seedProblems = async (usersByEmail, categoriesByName) => {
+    const admin = usersByEmail.get("admin@zybisys.com");
+    const agentRahul = usersByEmail.get("rahul.agent@zybisys.com");
+    const agentPriya = usersByEmail.get("priya.agent@zybisys.com");
+
+    const findIncident = (title) => Incident.findOne({ title }).exec();
+
+    // ---- 1. Known Error (FR4-03) --------------------------------
+    const knownError = await Problem.create({
+        title: "Recurring VPN connectivity failures for the finance team",
+        description:
+            "Intermittent VPN disconnections across the finance team share the same root cause. Sporadic drops occur roughly every five minutes during peak usage.",
+        status: PROBLEM_STATUS.KNOWN_ERROR,
+        category: categoriesByName.get("Network")._id,
+        ownerId: agentRahul._id,
+        workaround:
+            "Reconnect with the R77 client and switch the connection profile to the backup concentrator until the firmware is fixed.",
+    });
+
+    // Link the two Network incidents to this problem.
+    const vpnIncident = await findIncident("VPN disconnects every few minutes for the finance team");
+    const wifiIncident = await findIncident("Wi-Fi signal is very weak in the ground floor training room");
+    if (vpnIncident) { vpnIncident.problemId = knownError._id; await vpnIncident.save(); }
+    if (wifiIncident) { wifiIncident.problemId = knownError._id; await wifiIncident.save(); }
+
+    // Problem-scoped RCA reusing the existing RootCauseAnalysis structure (FR4-06).
+    await RootCauseAnalysis.create({
+        problem: knownError._id,
+        rootCauseCategory: "technology",
+        rootCauseDescription:
+            "The concentrator firmware load-balances sessions incorrectly under sustained load, causing periodic session resets for any client.",
+        why1: "Why were sessions reset?", "why2": "Why did the concentrator mishandle load?",
+        why3: "Why was the firmware not optimised?", "why4": "Why was the load path changed?",
+        why5: "Why had the peak profile not been load-tested?",
+        correctiveActions: "Apply the patched concentrator firmware across all regions.",
+        preventiveActions: "Add peak-load simulation to the release checklist for concentrator firmware.",
+        status: "approved",
+        author: admin._id,
+        reviewedBy: admin._id,
+    });
+
+    await ActivityLog.insertMany([
+        {
+            problem: knownError._id,
+            action: ACTIVITY_ACTIONS.PROBLEM_CREATED,
+            performedBy: admin._id,
+            note: "Problem created and assigned to Rahul Verma",
+        },
+        {
+            problem: knownError._id,
+            action: ACTIVITY_ACTIONS.PROBLEM_STATUS_CHANGED,
+            performedBy: agentRahul._id,
+            field: "status",
+            oldValue: "New",
+            newValue: "Known Error",
+        },
+        {
+            problem: knownError._id,
+            action: ACTIVITY_ACTIONS.INCIDENT_PROBLEM_LINKED,
+            performedBy: admin._id,
+            note: `Linked to ${vpnIncident ? vpnIncident.incidentNumber : "VPN incident"}`,
+        },
+    ]);
+
+    // ---- 2. New problem awaiting investigation ------------------
+    const newProblem = await Problem.create({
+        title: "Payroll portal reports intermittently returning 500 errors",
+        description:
+            "The payroll portal's Monthly Summary report intermittently returns 500 errors under load. Underlying cause is still being investigated.",
+        status: PROBLEM_STATUS.NEW,
+        category: categoriesByName.get("Application")._id,
+        ownerId: agentPriya._id,
+        workaround: "",
+    });
+
+    const payrollIncident = await findIncident("Payroll portal returns a 500 error on the reports page");
+    if (payrollIncident) { payrollIncident.problemId = newProblem._id; await payrollIncident.save(); }
+
+    await ActivityLog.insertMany([
+        {
+            problem: newProblem._id,
+            action: ACTIVITY_ACTIONS.PROBLEM_CREATED,
+            performedBy: admin._id,
+            note: "Problem created and assigned to Priya Nair",
+        },
+        {
+            problem: newProblem._id,
+            action: ACTIVITY_ACTIONS.INCIDENT_PROBLEM_LINKED,
+            performedBy: admin._id,
+            note: `Linked to ${payrollIncident ? payrollIncident.incidentNumber : "Payroll incident"}`,
+        },
+    ]);
+
+    logger.info(`Created ${2} problems`);
+    return { knownError, newProblem };
+};
+
 const run = async () => {
     validateEnv();
     await connectDB();
@@ -420,6 +528,7 @@ const run = async () => {
     const departmentsByCategory = await seedDepartments(admin._id, usersByEmail, categoriesByName);
 
     await seedIncidents(usersByEmail, categoriesByName, departmentsByCategory);
+    await seedProblems(usersByEmail, categoriesByName);
 
     // Make sure the indexes declared in the schemas actually exist, so a fresh
     // database behaves like a long-running one.
@@ -432,6 +541,8 @@ const run = async () => {
         Notification.syncIndexes(),
         Department.syncIndexes(),
         DepartmentUser.syncIndexes(),
+        Problem.syncIndexes(),
+        RootCauseAnalysis.syncIndexes(),
     ]);
 
     console.log("\n=========================================================");

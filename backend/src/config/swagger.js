@@ -378,6 +378,7 @@ endpoint and enforced by the backend regardless of the UI.
                         assignedDepartment: { type: "string", nullable: true, description: "Department id." },
                         assignedTo: { type: "string", nullable: true, description: "User id (populated in responses)." },
                         department: { type: "string", nullable: true, description: "Triage department id (populated in responses)." },
+                        problemId: { type: "string", nullable: true, description: "Problem id (populated with problemNumber/title/status in detail). Set when this incident is grouped under a Problem (FR4-04)." },
                         dueBy: { type: "string", format: "date-time", nullable: true },
                         overdueNotifiedAt: { type: "string", format: "date-time", nullable: true },
                         resolvedAt: { type: "string", format: "date-time", nullable: true },
@@ -469,6 +470,8 @@ endpoint and enforced by the backend regardless of the UI.
                             },
                         },
                         rca: { $ref: "#/components/schemas/RootCauseAnalysis" },
+                        problem: { type: "object", nullable: true, description: "The problem this incident is grouped under, if any (populated)." },
+                        rcaSource: { type: "string", enum: ["problem", "incident"], description: "Where the displayed RCA comes from - the incident's own RCA, or its linked problem's (FR4-04 fallback)." },
                         permissions: {
                             type: "object",
                             description: "Mirrors the backend permission rules so the UI can enable/disable controls.",
@@ -479,6 +482,7 @@ endpoint and enforced by the backend regardless of the UI.
                                 canDelete: { type: "boolean" },
                                 canManageLinks: { type: "boolean" },
                                 canUseInternalNotes: { type: "boolean" },
+                                canManageProblems: { type: "boolean", description: "Whether this user may link/unlink incidents to problems (Staff)." },
                             },
                         },
                     },
@@ -540,10 +544,11 @@ endpoint and enforced by the backend regardless of the UI.
                 // ------------------------------------------------------------------
                 RootCauseAnalysis: {
                     type: "object",
-                    description: "Root-Cause Analysis for an incident (one per incident).",
+                    description: "Root-Cause Analysis for an incident OR a problem (V4). Exactly one anchor is set - either `incident` or `problem`.",
                     properties: {
                         _id: { type: "string" },
-                        incident: { type: "string", description: "Incident id (unique)." },
+                        incident: { type: "string", nullable: true, description: "Incident id (unique, sparse)." },
+                        problem: { type: "string", nullable: true, description: "Problem id (unique, sparse). Set when this RCA belongs to a Problem (FR4-06)." },
                         rootCauseCategory: { type: "string", enum: ["people", "process", "technology", "vendor", "security", "other"], example: "technology" },
                         rootCauseDescription: { type: "string", maxLength: 5000, example: "Cable failure due to wear." },
                         why1: { type: "string", maxLength: 1000, default: "" },
@@ -585,6 +590,120 @@ endpoint and enforced by the backend regardless of the UI.
                     description: "Evidence (attachments) attached to an RCA.",
                     properties: {
                         attachments: { type: "array", items: { $ref: "#/components/schemas/Attachment" } },
+                    },
+                },
+
+                // ------------------------------------------------------------------
+                // Problems & Known Errors (V4 - FR4)
+                // ------------------------------------------------------------------
+                Problem: {
+                    type: "object",
+                    description: "A problem groups related incidents and tracks their shared root cause. Staff-only (Admins and Support Agents).",
+                    properties: {
+                        _id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5dc" },
+                        problemNumber: { type: "string", example: "PRB-000001" },
+                        title: { type: "string", minLength: 5, maxLength: 140, example: "Recurring VPN connectivity failures" },
+                        description: { type: "string", minLength: 10, maxLength: 5000, example: "Intermittent VPN disconnections across a team." },
+                        status: { type: "string", enum: ["new", "investigating", "known_error", "resolved"], example: "new" },
+                        category: { type: "string", nullable: true, description: "Category id (populated in responses)." },
+                        ownerId: { type: "string", nullable: true, description: "User id; must be an active Admin or Support Agent (populated in responses)." },
+                        rcaId: { type: "string", nullable: true, description: "Problem-scoped RCA id (when one exists)." },
+                        workaround: { type: "string", maxLength: 3000, description: "Temporary workaround, surfaced in the Known Error Database.", example: "" },
+                        resolvedAt: { type: "string", format: "date-time", nullable: true },
+                        createdAt: { type: "string", format: "date-time" },
+                        updatedAt: { type: "string", format: "date-time" },
+                    },
+                    required: ["title", "description"],
+                },
+                ProblemCreateRequest: {
+                    type: "object",
+                    required: ["title", "description"],
+                    properties: {
+                        title: { type: "string", minLength: 5, maxLength: 140, example: "Payroll portal report outages" },
+                        description: { type: "string", minLength: 10, maxLength: 5000, example: "Intermittent 500 errors on the Monthly Summary report under load." },
+                        ownerId: { type: "string", nullable: true, description: "An active Admin or Support Agent id; assigns the problem owner." },
+                        workaround: { type: "string", maxLength: 3000, description: "Optional workaround.", example: "" },
+                        incidentIds: { type: "array", items: { type: "string" }, description: "Optional; existing incident ids to group under the new problem immediately.", example: [] },
+                        category: { type: "string", description: "Optional category id; derived from the grouped incidents when supplied." },
+                    },
+                },
+                ProblemUpdateRequest: {
+                    type: "object",
+                    description: "All fields optional; only descriptive fields are editable here (status and owner have dedicated endpoints).",
+                    properties: {
+                        title: { type: "string", minLength: 5, maxLength: 140, example: "Recurring VPN connectivity failures (updated)" },
+                        description: { type: "string", minLength: 10, maxLength: 5000, example: "Updated description." },
+                        workaround: { type: "string", maxLength: 3000, example: "Use the backup concentrator profile." },
+                    },
+                },
+                ProblemStatusRequest: {
+                    type: "object",
+                    required: ["status"],
+                    properties: {
+                        status: {
+                            type: "string",
+                            enum: ["new", "investigating", "known_error", "resolved"],
+                            description: "Legal transitions are enforced: New -> Investigating/Known Error/Resolved; Investigating -> Known Error/Resolved/New; Known Error -> Resolved/Investigating; Resolved -> Investigating/Known Error.",
+                            example: "known_error",
+                        },
+                    },
+                },
+                ProblemOwnerRequest: {
+                    type: "object",
+                    required: ["ownerId"],
+                    properties: {
+                        ownerId: { type: "string", description: "An active Admin or Support Agent id.", example: "64b8f0c2e4a9d1f2a3b4c5d6" },
+                    },
+                },
+                ProblemLinkRequest: {
+                    type: "object",
+                    required: ["incidentId"],
+                    properties: {
+                        incidentId: { type: "string", description: "The incident to group under this problem. It must not be linked to another problem.", example: "64b8f0c2e4a9d1f2a3b4c5d9" },
+                    },
+                },
+                ProblemDetail: {
+                    type: "object",
+                    description: "Payload for the problem detail screen.",
+                    properties: {
+                        problem: { $ref: "#/components/schemas/Problem" },
+                        incidents: { type: "array", items: { $ref: "#/components/schemas/Incident" }, description: "Incidents grouped under this problem." },
+                        rca: { $ref: "#/components/schemas/RootCauseAnalysis" },
+                        activity: { type: "array", items: { $ref: "#/components/schemas/ActivityLogEntry" } },
+                        permissions: {
+                            type: "object",
+                            properties: {
+                                canManage: { type: "boolean" },
+                                isAdmin: { type: "boolean" },
+                            },
+                        },
+                    },
+                },
+                ProblemSuggestion: {
+                    type: "object",
+                    description: "FR4-02 auto-suggestion result, reusing the V3 correlation criteria (same category within the correlation window).",
+                    properties: {
+                        incident: { type: "object", description: "The incident the suggestion was requested for." },
+                        suggestion: {
+                            type: "object",
+                            properties: {
+                                canCreate: { type: "boolean", description: "True when at least two related incidents were found (enough to group)." },
+                                message: { type: "string" },
+                                relatedIncidents: {
+                                    type: "array",
+                                    items: { type: "object", properties: { incidentId: { type: "string" }, incidentNumber: { type: "string" }, title: { type: "string" }, status: { type: "string" } } },
+                                },
+                            },
+                        },
+                    },
+                },
+                KnownError: {
+                    type: "object",
+                    description: "A problem in Known Error status, as surfaced by the Known Error Database.",
+                    properties: {
+                        problem: { $ref: "#/components/schemas/Problem" },
+                        rca: { $ref: "#/components/schemas/RootCauseAnalysis" },
+                        incidents: { type: "array", items: { $ref: "#/components/schemas/Incident" } },
                     },
                 },
 
@@ -668,11 +787,12 @@ endpoint and enforced by the backend regardless of the UI.
                 },
                 ActivityLogEntry: {
                     type: "object",
-                    description: "Append-only audit entry for an incident.",
+                    description: "Append-only audit entry for an incident or a problem (V4).",
                     properties: {
                         _id: { type: "string" },
-                        incident: { type: "string", description: "Incident id." },
-                        action: { type: "string", enum: ["created", "status_changed", "priority_changed", "category_changed", "assigned", "unassigned", "reassigned", "department_changed", "updated", "commented", "attachment_added", "attachment_removed", "reopened", "linked", "unlinked"] },
+                        incident: { type: "string", nullable: true, description: "Incident id; set for incident activity." },
+                        problem: { type: "string", nullable: true, description: "Problem id; set for problem activity (FR4)." },
+                        action: { type: "string", enum: ["created", "status_changed", "priority_changed", "category_changed", "assigned", "unassigned", "reassigned", "department_changed", "updated", "commented", "attachment_added", "attachment_removed", "reopened", "linked", "unlinked", "problem_created", "problem_updated", "problem_status_changed", "problem_owner_changed", "incident_problem_linked", "incident_problem_unlinked"] },
                         performedBy: { type: "object", description: "User (populated)." },
                         field: { type: "string", nullable: true },
                         oldValue: { type: "string", nullable: true },
@@ -756,6 +876,7 @@ endpoint and enforced by the backend regardless of the UI.
             { name: "Categories", description: "Incident category master list." },
             { name: "Departments", description: "Support departments and their memberships." },
             { name: "Incidents", description: "Incident lifecycle, workflow, export, RCA, comments, attachments and links." },
+            { name: "Problems", description: "Problem Management and the Known Error Database (V4 - FR4). Includes problem<->incident linking and problem-scoped RCA." },
             { name: "Comments", description: "Comment editing/deletion." },
             { name: "Attachments", description: "Attachment download and deletion." },
             { name: "Dashboard", description: "Aggregations and analytics." },
@@ -1253,6 +1374,38 @@ endpoint and enforced by the backend regardless of the UI.
             },
 
             // ------------------------------------------------------------------
+            // Incident <-> Problem linking (V4 - FR4-04)
+            // ------------------------------------------------------------------
+            "/incidents/{id}/problem": {
+                post: {
+                    tags: ["Incidents"],
+                    summary: "Link this incident to a problem",
+                    description: "Staff only (Admins and Support Agents). Groups this incident under an existing problem. An incident already linked to another problem must be unlinked first.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident id." }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProblemLinkRequest" } } } },
+                    responses: {
+                        200: { description: "Incident linked to the problem.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { incident: { $ref: "#/components/schemas/Incident" } } } } } } } },
+                        400: { description: "Already linked (to this or another problem), or an invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Incident or problem not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                delete: {
+                    tags: ["Incidents"],
+                    summary: "Unlink this incident from its problem",
+                    description: "Staff only. Detaches the incident without deleting it.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident id." }],
+                    responses: {
+                        200: { description: "Incident removed from the problem.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { incident: { $ref: "#/components/schemas/Incident" } } } } } } } },
+                        400: { description: "Incident is not linked to a problem.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ------------------------------------------------------------------
             // RCA (under incidents)
             // ------------------------------------------------------------------
             "/incidents/{id}/rca": {
@@ -1711,6 +1864,247 @@ endpoint and enforced by the backend regardless of the UI.
                         200: { description: "Notification removed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponse" } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Notification not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
+            // Problems & Known Errors (V4 - FR4)
+            // ==================================================================
+            "/problems": {
+                get: {
+                    tags: ["Problems"],
+                    summary: "List problems",
+                    description: "Staff only. Search, filter (status/owner/category), sort and paginate the problem queue.",
+                    parameters: [
+                        { name: "page", in: "query", schema: { type: "integer", minimum: 1 }, description: "Page number." },
+                        { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page." },
+                        { name: "search", in: "query", schema: { type: "string" }, description: "Free text across title, description, reference and workaround." },
+                        { name: "status", in: "query", schema: { type: "string", enum: ["new", "investigating", "known_error", "resolved"] }, description: "Filter by status; comma-separated values supported." },
+                        { name: "ownerId", in: "query", schema: { type: "string" }, description: "Filter by owner id, or `me` for problems owned by the caller." },
+                        { name: "category", in: "query", schema: { type: "string" }, description: "Filter by category id." },
+                        { name: "sortBy", in: "query", schema: { type: "string", enum: ["createdAt", "updatedAt", "title", "status", "problemNumber"] } },
+                        { name: "sortOrder", in: "query", schema: { type: "string", enum: ["asc", "desc"] } },
+                    ],
+                    responses: {
+                        200: { description: "Paginated list of problems.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Problem" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                post: {
+                    tags: ["Problems"],
+                    summary: "Create a problem",
+                    description: "Staff only. Creates a problem and optionally groups supplied incidents under it, deriving the category from the incidents when present.",
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProblemCreateRequest" } } } },
+                    responses: {
+                        201: { description: "Problem created.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { problem: { $ref: "#/components/schemas/Problem" } } } } } } } },
+                        400: { description: "Invalid owner or one or more incidents do not exist.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff, or no access to one of the selected incidents.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/problems/suggestions/incidents/{incidentId}": {
+                get: {
+                    tags: ["Problems"],
+                    summary: "Suggest a problem for an incident (FR4-02)",
+                    description: "Staff only. Auto-suggestion that reuses the existing V3 correlation criteria (same category within the correlation window). It only suggests - it never creates a Problem.",
+                    parameters: [{ name: "incidentId", in: "path", required: true, schema: { type: "string" }, description: "Incident id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "Suggestion generated.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/ProblemSuggestion" } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff, or no access to the incident.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Incident not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/problems/{id}": {
+                get: {
+                    tags: ["Problems"],
+                    summary: "Get a problem with its linked incidents, RCA and activity",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Problem id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "Problem detail.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/ProblemDetail" } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Problem not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                patch: {
+                    tags: ["Problems"],
+                    summary: "Update a problem's descriptive fields",
+                    description: "Staff only. Title, description and workaround only.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProblemUpdateRequest" } } } },
+                    responses: {
+                        200: { description: "Problem updated.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { problem: { $ref: "#/components/schemas/Problem" } } } } } } } },
+                        400: { description: "No changes supplied.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                delete: {
+                    tags: ["Problems"],
+                    summary: "Delete a problem (Admin only)",
+                    description: "Detaches all linked incidents (they are kept) and removes the problem, its problem-scoped RCA and problem activity.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+                    responses: {
+                        200: { description: "Problem deleted.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not an administrator.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Problem not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/problems/{id}/status": {
+                patch: {
+                    tags: ["Problems"],
+                    summary: "Change a problem's status",
+                    description: "Staff only. Legal transitions are enforced. Moving to `resolved` sets `resolvedAt`; leaving `resolved` clears it.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProblemStatusRequest" } } } },
+                    responses: {
+                        200: { description: "Status changed.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { problem: { $ref: "#/components/schemas/Problem" } } } } } } } },
+                        400: { description: "Invalid transition.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/problems/{id}/owner": {
+                patch: {
+                    tags: ["Problems"],
+                    summary: "Change a problem's owner (FR4-05)",
+                    description: "Staff only. The new owner must be an active Admin or Support Agent.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProblemOwnerRequest" } } } },
+                    responses: {
+                        200: { description: "Owner changed.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { problem: { $ref: "#/components/schemas/Problem" } } } } } } } },
+                        400: { description: "Already owned by that user, or the owner is not an active Admin/Agent.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/problems/{id}/incidents": {
+                post: {
+                    tags: ["Problems"],
+                    summary: "Link an incident to this problem (FR4-04)",
+                    description: "Staff only. Groups an existing incident under this problem. The incident must not already be linked to another problem.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProblemLinkRequest" } } } },
+                    responses: {
+                        200: { description: "Incident linked.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponse" } } } },
+                        400: { description: "Already linked (to this or another problem).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff, or no access to the incident.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Problem or incident not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/problems/{id}/incidents/{incidentId}": {
+                delete: {
+                    tags: ["Problems"],
+                    summary: "Unlink an incident from this problem",
+                    description: "Staff only. Detaches the incident without deleting it.",
+                    parameters: [
+                        { name: "id", in: "path", required: true, schema: { type: "string" } },
+                        { name: "incidentId", in: "path", required: true, schema: { type: "string" }, description: "Incident id." },
+                    ],
+                    responses: {
+                        200: { description: "Incident removed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponse" } } } },
+                        400: { description: "The incident is not linked to this problem.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/problems/{id}/rca": {
+                get: {
+                    tags: ["Problems"],
+                    summary: "Get a problem's RCA (FR4-06)",
+                    description: "Staff only. Returns the problem-scoped RCA, which reuses the existing RootCauseAnalysis structure.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+                    responses: {
+                        200: { description: "RCA (draft, empty when none exists).", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/RootCauseAnalysis" } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                put: {
+                    tags: ["Problems"],
+                    summary: "Save a problem's RCA draft",
+                    description: "Staff only. Same fields and workflow as an incident's RCA.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RcaSaveRequest" } } } },
+                    responses: {
+                        200: { description: "RCA saved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/RootCauseAnalysis" } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/problems/{id}/rca/submit": {
+                post: {
+                    tags: ["Problems"],
+                    summary: "Submit a problem's RCA for review",
+                    description: "Staff only. Moves the RCA from `draft` to `in_review`.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+                    responses: {
+                        200: { description: "RCA submitted.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/RootCauseAnalysis" } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/problems/{id}/rca/review": {
+                patch: {
+                    tags: ["Problems"],
+                    summary: "Review (approve/return) a problem's RCA",
+                    description: "Admin only. Approves or returns an RCA that is `in_review`.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RcaReviewRequest" } } } },
+                    responses: {
+                        200: { description: "RCA reviewed.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/RootCauseAnalysis" } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not an administrator.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/known-errors": {
+                get: {
+                    tags: ["Problems"],
+                    summary: "List known errors (FR4-03)",
+                    description: "Staff only. Returns only problems in `known_error` status, searchable across title, reference, description and workaround.",
+                    parameters: [
+                        { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+                        { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+                        { name: "search", in: "query", schema: { type: "string" } },
+                    ],
+                    responses: {
+                        200: { description: "Paginated list of known errors.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Problem" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/known-errors/{id}": {
+                get: {
+                    tags: ["Problems"],
+                    summary: "Get a known error",
+                    description: "Staff only. Returns the problem, its workaround, RCA and linked incidents. A non-Known-Error id returns 404.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Problem id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "Known error detail.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/KnownError" } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Known error not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
                 },
             },

@@ -3,6 +3,7 @@ const {
     ROLE_VALUES,
     STATUS_VALUES,
     PRIORITY_VALUES,
+    PROBLEM_STATUS_VALUES,
 } = require("../constants");
 
 /**
@@ -251,6 +252,11 @@ const incidentValidators = {
             .isIn(["asc", "desc"])
             .withMessage("sortOrder must be 'asc' or 'desc'"),
     ],
+
+    linkProblem: [
+        objectId("id"),
+        body("problemId").isMongoId().withMessage("Please select a valid problem"),
+    ],
 };
 
 
@@ -334,6 +340,127 @@ const incidentLinkValidator = {
             .withMessage("Invalid link ID"),
     ]
 }
+
+// V4 - Problem Management (FR4)
+const problemValidators = {
+    create: [
+        body("title")
+            .trim()
+            .isLength({ min: 5, max: 140 })
+            .withMessage("Title must be between 5 and 140 characters"),
+        body("description")
+            .trim()
+            .isLength({ min: 10, max: 5000 })
+            .withMessage("Description must be between 10 and 5000 characters"),
+        body("ownerId")
+            .optional({ nullable: true })
+            .custom((value) => value === null || /^[a-f\d]{24}$/i.test(String(value)))
+            .withMessage("Please select a valid owner"),
+        body("workaround")
+            .optional()
+            .trim()
+            .isLength({ max: 3000 })
+            .withMessage("Workaround cannot exceed 3000 characters"),
+    ],
+
+    update: [
+        objectId("id"),
+        body("title")
+            .optional()
+            .trim()
+            .isLength({ min: 5, max: 140 })
+            .withMessage("Title must be between 5 and 140 characters"),
+        body("description")
+            .optional()
+            .trim()
+            .isLength({ min: 10, max: 5000 })
+            .withMessage("Description must be between 10 and 5000 characters"),
+        body("workaround")
+            .optional()
+            .trim()
+            .isLength({ max: 3000 })
+            .withMessage("Workaround cannot exceed 3000 characters"),
+    ],
+
+    byId: [objectId("id")],
+
+    list: [
+        query("page").optional().isInt({ min: 1 }).withMessage("Page must be 1 or more"),
+        query("limit")
+            .optional()
+            .isInt({ min: 1, max: 100 })
+            .withMessage("Limit must be between 1 and 100"),
+        query("search")
+            .optional()
+            .trim()
+            .isLength({ max: 140 })
+            .withMessage("Search term is too long"),
+        query("sortOrder")
+            .optional()
+            .isIn(["asc", "desc"])
+            .withMessage("sortOrder must be 'asc' or 'desc'"),
+        query("status")
+            .optional()
+            .custom((value) => {
+                const values = String(value).split(",");
+                if (values.length > 1) return true;
+                return PROBLEM_STATUS_VALUES.includes(String(value));
+            })
+            .withMessage(`Status must be one of: ${PROBLEM_STATUS_VALUES.join(", ")}`),
+    ],
+
+    updateStatus: [
+        objectId("id"),
+        body("status")
+            .isIn(PROBLEM_STATUS_VALUES)
+            .withMessage(`Status must be one of: ${PROBLEM_STATUS_VALUES.join(", ")}`),
+    ],
+
+    updateOwner: [
+        objectId("id"),
+        body("ownerId")
+            .isMongoId()
+            .withMessage("Please select a valid owner"),
+    ],
+
+    linkIncident: [
+        objectId("id"),
+        body("incidentId")
+            .isMongoId()
+            .withMessage("Please select a valid incident"),
+    ],
+
+    suggest: [param("incidentId").isMongoId().withMessage("Invalid incident ID")],
+};
+
+const knownErrorValidators = {
+    list: [
+        query("page").optional().isInt({ min: 1 }).withMessage("Page must be 1 or more"),
+        query("limit")
+            .optional()
+            .isInt({ min: 1, max: 100 })
+            .withMessage("Limit must be between 1 and 100"),
+        query("search")
+            .optional()
+            .trim()
+            .isLength({ max: 140 })
+            .withMessage("Search term is too long"),
+    ],
+
+    byId: [objectId("id")],
+};
+
+const problemRcaValidators = {
+    save: [
+        param("id").isMongoId().withMessage("Invalid problem ID"),
+        body("rootCauseCategory").optional().isIn(["people", "process", "technology", "vendor", "security", "other"]),
+        body("rootCauseDescription").optional().trim().isLength({ max: 5000 }),
+        body("correctiveActions").optional().trim().isLength({ max: 5000 }),
+        body("preventiveActions").optional().trim().isLength({ max: 5000 }),
+    ],
+    byProblem: [param("id").isMongoId().withMessage("Invalid problem ID")],
+    review: [param("id").isMongoId().withMessage("Invalid problem ID"), body("status").isIn(["approved", "returned"]), body("reviewComment").optional().trim().isLength({ max: 2000 })],
+};
 module.exports = {
     authValidators,
     userValidators,
@@ -343,5 +470,8 @@ module.exports = {
     commentValidators,
     rcaValidators,
     objectId,
-    incidentLinkValidator
+    incidentLinkValidator,
+    problemValidators,
+    knownErrorValidators,
+    problemRcaValidators
 };
