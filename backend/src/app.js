@@ -3,7 +3,8 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
-
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./config/swagger");
 const { env } = require("./config/env");
 const logger = require("./utils/logger");
 const sanitizeRequest = require("./middleware/sanitize");
@@ -14,32 +15,15 @@ const slaService = require("./services/slaService");
 
 const app = express();
 
-/**
- * Express application assembly.
- *
- * Order matters: security headers, then CORS, then body parsing, then
- * sanitising, then the routes, and finally the 404 and error handlers - which
- * must be last so they can catch everything above them.
- */
-
-// Behind a reverse proxy (Render, Railway, nginx) this makes req.ip the real
-// client address rather than the proxy's, which the rate limiter depends on.
 app.set("trust proxy", 1);
 
 app.disable("x-powered-by");
 
 app.use(
     helmet({
-        // Attachments are streamed to a different origin (the Vite dev server),
-        // which the default same-origin policy would block.
         crossOriginResourcePolicy: { policy: "cross-origin" },
     })
 );
-
-/**
- * CORS is limited to the known frontend origins from configuration rather than
- * being opened to "*", because the API is called with credentials.
- */
 app.use(
     cors({
         origin: (origin, callback) => {
@@ -96,8 +80,6 @@ const authLimiter = rateLimit({
 app.use("/api", apiLimiter);
 app.use("/api/v1/auth/login", authLimiter);
 app.use("/api/v1/auth/register", authLimiter);
-
-/** Liveness probe - no auth, no database access. */
 app.get("/api/health", (_req, res) => {
     res.json({
         success: true,
@@ -110,10 +92,17 @@ app.get("/api/health", (_req, res) => {
     });
 });
 
-/**
- * Enumerations and SLA targets, so the React app renders labels from the same
- * source of truth as the API instead of hard-coding its own copy.
- */
+// Swagger UI and the raw OpenAPI spec. The full documentation is defined in
+// src/config/swagger.js and simply described here - nothing about how the
+// existing routes handle requests is changed.
+app.use(
+    "/api-docs",
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec, {
+        customSiteTitle: "Incident Management API - Swagger",
+    })
+);
+
 app.get("/api/v1/meta", (_req, res) => {
     res.json({
         success: true,
@@ -141,8 +130,6 @@ app.get("/api/v1/meta", (_req, res) => {
 });
 
 app.use("/api/v1", routes);
-
-// Must stay last: 404 for unmatched routes, then the central error handler.
 app.use(notFound);
 app.use(errorHandler);
 

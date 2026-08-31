@@ -27,6 +27,7 @@ const IncidentCreatePage = lazy(() => import("./pages/IncidentCreatePage"));
 const IncidentDetailPage = lazy(() => import("./pages/IncidentDetailPage"));
 const MyQueuePage = lazy(() => import("./pages/MyQueuePage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const ApiDocsPage = lazy(() => import("./pages/ApiDocsPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
 const CategoriesPage = lazy(() => import("./pages/admin/CategoriesPage"));
 const DepartmentsPage = lazy(() => import("./pages/admin/DepartmentsPage"));
@@ -58,6 +59,7 @@ const App = () => (
                         <Route path="/incidents/:id" element={<IncidentDetailPage />} />
 
                         <Route path="/profile" element={<ProfilePage />} />
+                        <Route path="/api-docs" element={<ApiDocsPage />} />
                         <Route path="/forbidden" element={<ForbiddenPage />} />
 
                         {/* Staff only */}

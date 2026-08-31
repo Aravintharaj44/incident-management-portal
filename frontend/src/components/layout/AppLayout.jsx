@@ -13,6 +13,7 @@ import {
     Typography,
 } from "antd";
 import {
+    ApiOutlined,
     AppstoreOutlined,
     BarsOutlined,
     DashboardOutlined,
@@ -81,6 +82,12 @@ const AppLayout = () => {
                 label: <Link to="/my-queue">My Queue</Link>,
             });
         }
+
+        items.push({
+            key: "/api-docs",
+            icon: <ApiOutlined />,
+            label: <Link to="/api-docs">API Documentation</Link>,
+        });
 
         if (isAdmin) {
             items.push(

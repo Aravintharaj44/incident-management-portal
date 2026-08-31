@@ -1,12 +1,3 @@
-/**
- * Tiny structured logger.
- *
- * V1 deliberately avoids pulling in Winston (that is a V2 item), but every log
- * call already goes through one module with a consistent shape - so swapping
- * the implementation later is a one-file change rather than a hunt for stray
- * console.log calls.
- */
-
 const LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
 
 const currentLevel =
