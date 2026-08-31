@@ -71,10 +71,23 @@ const incidentSchema = new mongoose.Schema(
             required: true,
             index: true,
         },
-
+        assignedDepartment: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Department",
+            default: null,
+            index: true,
+        },    
         assignedTo: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
+            default: null,
+            index: true,
+        },
+
+        // Set during triage; only active members can receive incidents for it.
+        department: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Department",
             default: null,
             index: true,
         },
@@ -121,6 +134,7 @@ const incidentSchema = new mongoose.Schema(
  */
 incidentSchema.index({ status: 1, priority: 1, createdAt: -1 });
 incidentSchema.index({ assignedTo: 1, status: 1, createdAt: -1 });
+incidentSchema.index({ assignedDepartment: 1, status: 1, createdAt: -1 });
 incidentSchema.index({ reportedBy: 1, createdAt: -1 });
 
 /** True when an unresolved incident has passed its SLA target (FR-14). */

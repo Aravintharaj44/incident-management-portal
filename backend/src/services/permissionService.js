@@ -65,6 +65,12 @@ const canAssign = (user, incident) => {
 
 const canDelete = (user) => isAdmin(user);
 
+/**
+ * Only an Admin decides which department an incident belongs to. Support
+ * Agents work inside the department already assigned by an Admin.
+ */
+const canChangeDepartment = (user) => isAdmin(user);
+
 /** Linking affects two records, so it is deliberately limited to support staff. */
 const canManageLinks = (user) => isAdmin(user) || isAgent(user);
 
@@ -108,6 +114,7 @@ module.exports = {
     canEditDetails,
     canChangeStatus,
     canAssign,
+    canChangeDepartment,
     canDelete,
     canManageLinks,
     canComment,

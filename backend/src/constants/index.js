@@ -79,6 +79,7 @@ const ACTIVITY_ACTIONS = {
     ASSIGNED: "assigned",
     UNASSIGNED: "unassigned",
     REASSIGNED: "reassigned",
+    DEPARTMENT_CHANGED: "department_changed",
     UPDATED: "updated",
     COMMENTED: "commented",
     ATTACHMENT_ADDED: "attachment_added",

@@ -13,6 +13,8 @@ const ActivityLog = require("../models/ActivityLog");
 const Attachment = require("../models/Attachment");
 const Notification = require("../models/Notification");
 const Counter = require("../models/Counter");
+const Department = require("../models/Department");
+const DepartmentUser = require("../models/DepartmentUser");
 
 const { ROLES, STATUS, PRIORITY, ACTIVITY_ACTIONS } = require("../constants");
 
@@ -214,6 +216,8 @@ const clearCollections = async () => {
         Attachment.deleteMany({}),
         Notification.deleteMany({}),
         Counter.deleteMany({}),
+        Department.deleteMany({}),
+        DepartmentUser.deleteMany({}),
     ]);
 
     logger.info("Cleared existing collections");
@@ -242,7 +246,61 @@ const seedCategories = async (adminId) => {
     return new Map(created.map((category) => [category.name, category]));
 };
 
-const seedIncidents = async (usersByEmail, categoriesByName) => {
+/**
+ * Demo departments so the assignment workflow (category -> department ->
+ * member) can be exercised straight after a fresh seed. Each seeded agent is
+ * placed as the member (and head) of the department that owns their work.
+ */
+const seedDepartments = async (adminId, usersByEmail, categoriesByName) => {
+    const DEPARTMENTS = [
+        {
+            title: "Infrastructure Support",
+            description: "Owns network, hardware and security incidents.",
+            categories: ["Network", "Hardware", "Security"],
+            head: "rahul.agent@zybisys.com",
+            members: ["rahul.agent@zybisys.com"],
+        },
+        {
+            title: "Application Support",
+            description: "Owns application and access incidents.",
+            categories: ["Application", "Access"],
+            head: "priya.agent@zybisys.com",
+            members: ["priya.agent@zybisys.com"],
+        },
+    ];
+
+    const byCategory = new Map();
+    let created = 0;
+
+    for (const spec of DEPARTMENTS) {
+        const head = usersByEmail.get(spec.head);
+        const memberIds = spec.members.map((email) => usersByEmail.get(email)._id);
+        const categoryIds = spec.categories.map((name) => categoriesByName.get(name)._id);
+
+        const department = await Department.create({
+            title: spec.title,
+            description: spec.description,
+            categories: categoryIds,
+            headOfDepartment: head._id,
+        });
+
+        await DepartmentUser.insertMany(
+            memberIds.map((user) => ({
+                user,
+                department: department._id,
+                assignedBy: adminId,
+            }))
+        );
+
+        spec.categories.forEach((name) => byCategory.set(name, department._id));
+        created += 1;
+    }
+
+    logger.info(`Created ${created} departments`);
+    return byCategory;
+};
+
+const seedIncidents = async (usersByEmail, categoriesByName, departmentsByCategory) => {
     let incidentCount = 0;
     let commentCount = 0;
 
@@ -261,6 +319,8 @@ const seedIncidents = async (usersByEmail, categoriesByName) => {
             status: spec.status,
             reportedBy: reporter._id,
             assignedTo: assignee ? assignee._id : null,
+            // Each seeded agent sits in the department that owns their category.
+            department: departmentsByCategory.get(spec.category) || null,
             resolutionNote: spec.resolutionNote || "",
             commentCount: spec.comments.length,
             createdAt,
@@ -357,8 +417,9 @@ const run = async () => {
     const usersByEmail = await seedUsers();
     const admin = usersByEmail.get("admin@zybisys.com");
     const categoriesByName = await seedCategories(admin._id);
+    const departmentsByCategory = await seedDepartments(admin._id, usersByEmail, categoriesByName);
 
-    await seedIncidents(usersByEmail, categoriesByName);
+    await seedIncidents(usersByEmail, categoriesByName, departmentsByCategory);
 
     // Make sure the indexes declared in the schemas actually exist, so a fresh
     // database behaves like a long-running one.
@@ -369,6 +430,8 @@ const run = async () => {
         Comment.syncIndexes(),
         ActivityLog.syncIndexes(),
         Notification.syncIndexes(),
+        Department.syncIndexes(),
+        DepartmentUser.syncIndexes(),
     ]);
 
     console.log("\n=========================================================");

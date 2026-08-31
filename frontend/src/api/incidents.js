@@ -29,7 +29,9 @@ export const incidentApi = {
 
     updateStatus: (id, payload) => client.patch(`/incidents/${id}/status`, payload),
 
-    assign: (id, assignedTo) => client.patch(`/incidents/${id}/assign`, { assignedTo }),
+    assign: (id, payload) => client.patch(`/incidents/${id}/assign`, typeof payload === "object" ? payload : { assignedTo: payload }),
+
+    assignmentOptions: (id) => client.get(`/incidents/${id}/assignment-options`),
 
     listLinks: (id) => client.get(`/incidents/${id}/links`),
 

@@ -23,6 +23,7 @@ const ACTION_META = {
     assigned: { icon: <UserSwitchOutlined />, color: "green", label: "assigned this incident" },
     reassigned: { icon: <UserSwitchOutlined />, color: "green", label: "reassigned this incident" },
     unassigned: { icon: <UserSwitchOutlined />, color: "grey", label: "returned it to the queue" },
+    department_changed: { icon: <SwapOutlined />, color: "cyan", label: "changed the department" },
     updated: { icon: <EditOutlined />, color: "blue", label: "updated the details" },
     commented: { icon: <MessageOutlined />, color: "grey", label: "commented" },
     attachment_added: { icon: <FileAddOutlined />, color: "cyan", label: "added an attachment" },

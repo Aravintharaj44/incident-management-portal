@@ -17,6 +17,8 @@ const permissions = require("../services/permissionService");
 const slaService = require("../services/slaService");
 const IncidentLink = require("../models/IncidentLink");
 const RootCauseAnalysis = require("../models/RootCauseAnalysis");
+const Department = require("../models/Department");
+const DepartmentUser = require("../models/DepartmentUser");
 const {
     ROLES,
     STATUS,
@@ -141,6 +143,7 @@ const POPULATE = [
     { path: "category", select: "name isActive" },
     { path: "reportedBy", select: "name email role" },
     { path: "assignedTo", select: "name email role" },
+    { path: "department", select: "title categories isActive" },
 ];
 
 /**
@@ -336,6 +339,44 @@ const updateIncident = asyncHandler(async (req, res) => {
             newValue: categoryDoc.name,
         });
         incident.category = categoryDoc._id;
+
+        // The department must stay valid for the new category. If it no longer
+        // applies, return the incident to the unassigned queue so an invalid
+        // department/member combination cannot persist.
+        const currentDepartment = incident.department;
+        if (currentDepartment && currentDepartment.categories) {
+            const stillValid =
+                currentDepartment.isActive &&
+                currentDepartment.categories.some(
+                    (id) => String(id) === String(categoryDoc._id)
+                );
+
+            if (!stillValid) {
+                const previousDepartmentTitle = currentDepartment.title || "Unassigned";
+                if (incident.assignedTo) {
+                    auditEntries.push({
+                        incident: incident._id,
+                        action: ACTIVITY_ACTIONS.UNASSIGNED,
+                        performedBy: req.user._id,
+                        field: "assignedTo",
+                        oldValue: incident.assignedTo.name,
+                        newValue: "Unassigned",
+                        note: "Department no longer applies to the new category",
+                    });
+                    incident.assignedTo = null;
+                }
+                auditEntries.push({
+                    incident: incident._id,
+                    action: ACTIVITY_ACTIONS.DEPARTMENT_CHANGED,
+                    performedBy: req.user._id,
+                    field: "department",
+                    oldValue: previousDepartmentTitle,
+                    newValue: "Unassigned",
+                    note: "Department not valid for the selected category",
+                });
+                incident.department = null;
+            }
+        }
     }
 
     if (priority !== undefined && priority !== incident.priority) {
@@ -472,68 +513,178 @@ const updateStatus = asyncHandler(async (req, res) => {
     });
 });
 
+/** GET /api/v1/incidents/:id/assignment-options */
+const getAssignmentOptions = asyncHandler(async (req, res) => {
+    const incident = await Incident.findById(req.params.id).select("category assignedTo department");
+    if (!incident) throw ApiError.notFound("Incident not found");
+    if (!permissions.canAssign(req.user, incident)) throw ApiError.forbidden("You cannot assign this incident");
+
+const departments = await Department.find({ categories: incident.category, isActive: true })
+        .select("title")
+        .sort({ title: 1 })
+        .lean();
+
+    // Support Agents only ever see the department the incident is already
+    // assigned to, and therefore cannot reach another team's members.
+    let visibleDepartments = departments;
+    if (permissions.isAgent(req.user)) {
+        const currentDepartmentId = incident.department
+            ? String(incident.department._id ?? incident.department)
+            : null;
+        visibleDepartments = currentDepartmentId
+            ? departments.filter((department) => String(department._id) === currentDepartmentId)
+            : [];
+    }
+
+    const memberships = await DepartmentUser.find({
+        department: { $in: visibleDepartments.map((department) => department._id) },
+        isActive: true,
+    })
+        .populate({ path: "user", match: { isActive: true, role: { $in: [ROLES.ADMIN, ROLES.AGENT] } }, select: "name email role" })
+        .lean();
+    const membersByDepartment = new Map();
+    memberships.forEach((membership) => {
+        if (!membership.user) return;
+        const key = String(membership.department);
+        membersByDepartment.set(key, [...(membersByDepartment.get(key) || []), membership.user]);
+    });
+
+    return successResponse(res, 200, "Assignment options retrieved", {
+        departments: visibleDepartments.map((department) => ({
+            ...department,
+            members: membersByDepartment.get(String(department._id)) || [],
+        })),
+    });
+});
 /**
  * PATCH /api/v1/incidents/:id/assign  (FR-05)
  * Pass assignedTo: null to return the incident to the unassigned queue.
  */
 const assignIncident = asyncHandler(async (req, res) => {
-    const { assignedTo } = req.body;
-
+    const { assignedTo, department } = req.body;
+    const departmentWasProvided = Object.prototype.hasOwnProperty.call(req.body, "department");
+    const assigneeWasProvided = Object.prototype.hasOwnProperty.call(req.body, "assignedTo");
     const incident = await Incident.findById(req.params.id).populate(POPULATE);
     if (!incident) throw ApiError.notFound("Incident not found");
-
     if (!permissions.canAssign(req.user, incident)) {
-        throw ApiError.forbidden(
-            "You can only reassign incidents that are unassigned or assigned to you"
-        );
+        throw ApiError.forbidden("You can only reassign incidents that are unassigned or assigned to you");
+    }
+
+    // Only an Admin can decide (or change) which department handles an
+    // incident. A Support Agent sending a department id is rejected outright
+    // rather than silently ignored, so the department cannot be swapped
+    // through the API.
+    if (departmentWasProvided && !permissions.canChangeDepartment(req.user)) {
+        throw ApiError.forbidden("Only an admin can change the incident department");
     }
 
     const previous = incident.assignedTo;
     const previousId = previous ? String(previous._id) : null;
+    const previousDepartmentTitle = incident.department?.title || "Unassigned";
+    const currentDepartmentId = incident.department?._id ? String(incident.department._id) : null;
+    let effectiveDepartment = incident.department?._id || null;
+    let departmentChanged = false;
+    let selectedDepartmentTitle = null;
 
-    // Unassign.
+    if (departmentWasProvided) {
+        if (!department) {
+            departmentChanged = currentDepartmentId !== null;
+            effectiveDepartment = null;
+            incident.department = null;
+        } else {
+            const selectedDepartment = await Department.findOne({
+                _id: department,
+                categories: incident.category._id || incident.category,
+                isActive: true,
+            }).select("_id title");
+            if (!selectedDepartment) {
+                throw ApiError.badRequest("Choose an active department that handles this incident category");
+            }
+            departmentChanged = currentDepartmentId !== String(selectedDepartment._id);
+            effectiveDepartment = selectedDepartment._id;
+            incident.department = selectedDepartment._id;
+            selectedDepartmentTitle = selectedDepartment.title;
+        }
+    }
+
+    // Selecting a department is allowed before an assignee is chosen. Changing
+    // it returns any existing assignment to the queue so it cannot cross teams.
+    if (!assigneeWasProvided) {
+        if (departmentChanged && previousId) incident.assignedTo = null;
+        await incident.save();
+        if (departmentChanged) {
+            await activityService.record({
+                incident: incident._id,
+                action: ACTIVITY_ACTIONS.DEPARTMENT_CHANGED,
+                performedBy: req.user._id,
+                field: "department",
+                oldValue: previousDepartmentTitle,
+                newValue: selectedDepartmentTitle || "Unassigned",
+            });
+        }
+        const updated = await Incident.findById(incident._id).populate(POPULATE).lean();
+        return successResponse(res, 200, "Department updated", { incident: decorate(updated) });
+    }
+
     if (!assignedTo) {
-        if (!previousId) throw ApiError.badRequest("This incident is already unassigned");
-
+        if (!previousId && !departmentWasProvided) throw ApiError.badRequest("This incident is already unassigned");
         incident.assignedTo = null;
         await incident.save();
-    await activityService.record({
-            incident: incident._id,
-            action: ACTIVITY_ACTIONS.UNASSIGNED,
-            performedBy: req.user._id,
-            field: "assignedTo",
-            oldValue: previous.name,
-            newValue: "Unassigned",
-        });
-
+        if (previousId) {
+            await activityService.record({
+                incident: incident._id, action: ACTIVITY_ACTIONS.UNASSIGNED,
+                performedBy: req.user._id, field: "assignedTo",
+                oldValue: previous.name, newValue: "Unassigned",
+            });
+        }
+        if (departmentChanged) {
+            await activityService.record({
+                incident: incident._id,
+                action: ACTIVITY_ACTIONS.DEPARTMENT_CHANGED,
+                performedBy: req.user._id,
+                field: "department",
+                oldValue: previousDepartmentTitle,
+                newValue: selectedDepartmentTitle || "Unassigned",
+            });
+        }
         const cleared = await Incident.findById(incident._id).populate(POPULATE).lean();
-
-        return successResponse(res, 200, "Incident returned to the unassigned queue", {
-            incident: decorate(cleared),
-        });
+        return successResponse(res, 200, "Incident returned to the unassigned queue", { incident: decorate(cleared) });
     }
 
-    if (previousId === String(assignedTo)) {
+    // A member can only be assigned once a department is in effect. This holds
+    // for Admins and Support Agents alike - the frontend enforces it visually,
+    // the API enforces it here.
+    if (!effectiveDepartment) {
+        throw ApiError.badRequest(
+            "Admin must assign a department before a member can be assigned."
+        );
+    }
+
+    if (previousId === String(assignedTo) && !departmentWasProvided) {
         throw ApiError.badRequest("This incident is already assigned to that user");
     }
-
     const assignee = await User.findById(assignedTo);
-
-    if (!assignee || !assignee.isActive) {
+    if (!assignee || !assignee.isActive || ![ROLES.ADMIN, ROLES.AGENT].includes(assignee.role)) {
         throw ApiError.badRequest("The selected user is not available for assignment");
     }
-
-    // Only staff can carry incidents.
-    if (![ROLES.ADMIN, ROLES.AGENT].includes(assignee.role)) {
-        throw ApiError.badRequest("Incidents can only be assigned to an agent or admin");
-    }
+    const isMember = await DepartmentUser.exists({
+        department: effectiveDepartment, user: assignee._id, isActive: true,
+    });
+    if (!isMember) throw ApiError.badRequest("The selected user is not an active member of this department");
 
     incident.assignedTo = assignee._id;
-
-    // Picking up brand-new work moves it into progress in one step.
     if (incident.status === STATUS.NEW) incident.status = STATUS.IN_PROGRESS;
-
     await incident.save();
+    if (departmentChanged) {
+        await activityService.record({
+            incident: incident._id,
+            action: ACTIVITY_ACTIONS.DEPARTMENT_CHANGED,
+            performedBy: req.user._id,
+            field: "department",
+            oldValue: previousDepartmentTitle,
+            newValue: selectedDepartmentTitle || "Unassigned",
+        });
+    }
     await activityService.record({
         incident: incident._id,
         action: previousId ? ACTIVITY_ACTIONS.REASSIGNED : ACTIVITY_ACTIONS.ASSIGNED,
@@ -542,24 +693,10 @@ const assignIncident = asyncHandler(async (req, res) => {
         oldValue: previous ? previous.name : "Unassigned",
         newValue: assignee.name,
     });
-
-    logger.event("incident_assigned", {
-        incidentId: incident.id,
-        to: assignee.id,
-        by: req.user.id,
-    });
-
-    notificationService.notifyIncidentAssigned({
-        incident,
-        assignee,
-        assignedBy: req.user,
-    });
-
+    logger.event("incident_assigned", { incidentId: incident.id, department: effectiveDepartment, to: assignee.id, by: req.user.id });
+    notificationService.notifyIncidentAssigned({ incident, assignee, assignedBy: req.user });
     const updated = await Incident.findById(incident._id).populate(POPULATE).lean();
-
-    return successResponse(res, 200, `Incident assigned to ${assignee.name}`, {
-        incident: decorate(updated),
-    });
+    return successResponse(res, 200, `Incident assigned to ${assignee.name}`, { incident: decorate(updated) });
 });
 
 /**
@@ -660,6 +797,7 @@ module.exports = {
     createIncident,
     updateIncident,
     updateStatus,
+    getAssignmentOptions,
     assignIncident,
     deleteIncident,
     exportIncidents,

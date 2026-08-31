@@ -227,6 +227,10 @@ const incidentValidators = {
             .optional({ nullable: true })
             .custom((value) => value === null || /^[a-f\d]{24}$/i.test(String(value)))
             .withMessage("Please select a valid user to assign to"),
+        body("department")
+            .optional({ nullable: true })
+            .custom((value) => value === null || /^[a-f\d]{24}$/i.test(String(value)))
+            .withMessage("Please select a valid department"),
     ],
 
     byId: [objectId("id")],

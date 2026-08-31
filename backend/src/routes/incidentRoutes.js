@@ -17,6 +17,7 @@ const {
     createIncident,
     updateIncident,
     updateStatus,
+    getAssignmentOptions,
     assignIncident,
     deleteIncident,
     exportIncidents,
@@ -106,6 +107,13 @@ router.patch(
     incidentValidators.updateStatus,
     validate,
     updateStatus
+);
+
+router.get(
+    "/:id/assignment-options",
+    incidentValidators.byId,
+    validate,
+    getAssignmentOptions
 );
 
 router.patch(

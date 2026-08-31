@@ -31,7 +31,7 @@ import {
     ReloadOutlined,
     UserSwitchOutlined,
 } from "@ant-design/icons";
-import { categoryApi, incidentApi, userApi } from "../api";
+import { categoryApi, incidentApi } from "../api";
 import { useAuth } from "../hooks/useAuth";
 import PageHeader from "../components/common/PageHeader";
 import { PriorityTag, SlaTag, StatusTag } from "../components/common/Tags";
@@ -54,17 +54,10 @@ import { formatDateTime, formatDueBy, fromNow } from "../utils/format";
 const { Paragraph, Text } = Typography;
 const { TextArea } = Input;
 
-/**
- * Incident detail - where the workflow actually happens (FR-05, FR-06, FR-07).
- *
- * The available actions come from `permissions` in the API response rather
- * than being re-derived here, so the buttons on screen and the rules on the
- * server can never disagree.
- */
 const IncidentDetailPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { isStaff } = useAuth();
+    const { isStaff, isAdmin } = useAuth();
     const { message, modal } = App.useApp();
 
     const [payload, setPayload] = useState(null);
@@ -72,7 +65,7 @@ const IncidentDetailPage = () => {
     const [error, setError] = useState(null);
     const [acting, setActing] = useState(false);
 
-    const [assignees, setAssignees] = useState([]);
+    const [assignmentOptions, setAssignmentOptions] = useState([]);
     const [categories, setCategories] = useState([]);
 
     const [editOpen, setEditOpen] = useState(false);
@@ -105,19 +98,29 @@ const IncidentDetailPage = () => {
     }, [load]);
 
     // Reference data only staff can act on.
-    useEffect(() => {
+    const loadReferenceData = useCallback(async () => {
         if (!isStaff) return;
 
-        userApi
-            .assignable()
-            .then((response) => setAssignees(response.data.users))
-            .catch(() => setAssignees([]));
+        try {
+            const [assignmentResult, categoryResult] = await Promise.all([
+                incidentApi.assignmentOptions(id),
+                categoryApi.list(),
+            ]);
+            setAssignmentOptions(assignmentResult.data.departments);
+            setCategories(categoryResult.data.categories);
+        } catch {
+            setAssignmentOptions([]);
+            setCategories([]);
+        }
+    }, [id, isStaff]);
 
-        categoryApi
-            .list()
-            .then((response) => setCategories(response.data.categories))
-            .catch(() => setCategories([]));
-    }, [isStaff]);
+    useEffect(() => {
+        // The state updates here happen after an await, so this is not the
+        // synchronous cascade the rule guards against - it cannot see past
+        // the async boundary.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        loadReferenceData();
+    }, [loadReferenceData]);
 
     if (loading && !payload) return <LoadingView tip="Loading incident..." height={400} />;
     if (error) return <ErrorView error={error} onRetry={load} title="Could not open this incident" />;
@@ -193,18 +196,38 @@ const IncidentDetailPage = () => {
         }
     };
 
-    const handleAssign = (assignedTo) =>
+const handleDepartmentChange = (department) =>
         runAction(
-            () => incidentApi.assign(id, assignedTo || null),
-            assignedTo ? "Incident assigned" : "Incident returned to the queue"
+            () => incidentApi.assign(id, { department: department || null }),
+            department ? "Department selected; choose a department member" : "Department cleared"
         );
 
+    const handleAssign = (assignedTo) => {
+        if (assignedTo && !incident.department?._id) {
+            message.error("Select a department before assigning an agent");
+            return;
+        }
+        // Only an Admin decides the department; a Support Agent sends just the
+        // member so the API never sees a department id they could tamper with.
+        const payload = isAdmin
+            ? { department: incident.department?._id || null, assignedTo: assignedTo || null }
+            : { assignedTo: assignedTo || null };
+        return runAction(
+            () => incidentApi.assign(id, payload),
+            assignedTo ? "Incident assigned" : "Incident returned to the queue"
+        );
+    };
     const handleEdit = async (values) => {
         const done = await runAction(
             () => incidentApi.update(id, values),
             "Incident updated"
         );
-        if (done) setEditOpen(false);
+        if (done) {
+            setEditOpen(false);
+            // A new category can change which departments are valid, so refresh
+            // the reference data the assignment dropdowns come from.
+            loadReferenceData();
+        }
     };
 
     const handleDelete = () => {
@@ -417,6 +440,9 @@ const IncidentDetailPage = () => {
                             <Descriptions.Item label="Reported by">
                                 <UserBadge user={incident.reportedBy} />
                             </Descriptions.Item>
+                            <Descriptions.Item label="Department">
+                                {incident.department?.title || "Unassigned"}
+                            </Descriptions.Item>
                             <Descriptions.Item label="Assigned to">
                                 <UserBadge user={incident.assignedTo} />
                             </Descriptions.Item>
@@ -454,22 +480,24 @@ const IncidentDetailPage = () => {
                             size="small"
                             style={{ marginTop: 16 }}
                         >
-                            <Select
-                                style={{ width: "100%" }}
-                                placeholder="Assign to an agent"
-                                allowClear
-                                showSearch
-                                optionFilterProp="label"
-                                loading={acting}
-                                value={incident.assignedTo?._id}
-                                onChange={handleAssign}
-                                options={assignees.map((agent) => ({
-                                    value: agent._id,
-                                    label: `${agent.name} (${agent.role === "admin" ? "Admin" : "Agent"})`,
-                                }))}
-                            />
+<Space orientation="vertical" size={10} style={{ width: "100%" }}>
+                                <Text type="secondary" style={{ fontSize: 12 }}>Department</Text>
+                                {isAdmin ? (
+                                    <Select style={{ width: "100%" }} placeholder="Select department for this category" allowClear showSearch optionFilterProp="label" loading={acting} value={incident.department?._id} onChange={handleDepartmentChange} options={assignmentOptions.map((department) => ({ value: department._id, label: department.title }))} />
+                                ) : (
+                                    <Text strong>{incident.department?.title || "Unassigned"}</Text>
+                                )}
+                                <Text type="secondary" style={{ fontSize: 12 }}>Assigned to</Text>
+                                {isAdmin ? (
+                                    <Select style={{ width: "100%" }} placeholder={incident.department ? "Assign to a department member" : "Select a department first"} allowClear showSearch optionFilterProp="label" loading={acting} disabled={!incident.department?._id} value={incident.assignedTo?._id} onChange={handleAssign} options={(assignmentOptions.find((department) => department._id === incident.department?._id)?.members || []).map((agent) => ({ value: agent._id, label: `${agent.name} (${agent.role === "admin" ? "Admin" : "Agent"})` }))} />
+                                ) : incident.department ? (
+                                    <Select style={{ width: "100%" }} placeholder="Assign to a department member" allowClear showSearch optionFilterProp="label" loading={acting} value={incident.assignedTo?._id} onChange={handleAssign} options={(assignmentOptions.find((department) => department._id === incident.department?._id)?.members || []).map((agent) => ({ value: agent._id, label: `${agent.name} (${agent.role === "admin" ? "Admin" : "Agent"})` }))} />
+                                ) : (
+                                    <Alert type="info" showIcon message="Admin must assign a department before a member can be assigned." />
+                                )}
+                            </Space>
                             <Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 8 }}>
-                                Clearing this returns the incident to the unassigned queue.
+                                Only active members of the assigned department can be assigned. Clearing the agent returns the incident to the queue.
                             </Text>
                         </Card>
                     )}

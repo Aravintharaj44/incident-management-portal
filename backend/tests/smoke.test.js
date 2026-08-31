@@ -125,7 +125,13 @@ test("an End User creates an incident and it is attributed to them", async () =>
     assert.equal(categories.status, 200);
     assert.ok(categories.body.data.categories.length > 0);
 
-    ctx.categoryId = categories.body.data.categories[0]._id;
+    // Use a category owned by a seeded department whose member (rahul) is the
+    // agent the smoke test walks the incident through with.
+    const network = categories.body.data.categories.find(
+        (category) => category.name === "Network"
+    );
+    assert.ok(network, "Network category not found in the seeded data");
+    ctx.categoryId = network._id;
 
     const { status, body } = await api("/incidents", {
         method: "POST",
@@ -135,7 +141,7 @@ test("an End User creates an incident and it is attributed to them", async () =>
             description:
                 "Raised by the automated smoke test to exercise the incident lifecycle end to end.",
             category: ctx.categoryId,
-            priority: "high",
+            priority: "medium",
         },
     });
 
@@ -146,7 +152,9 @@ test("an End User creates an incident and it is attributed to them", async () =>
     assert.equal(body.data.incident.status, "new");
     assert.match(body.data.incident.incidentNumber, /^INC-\d{6}$/);
     assert.equal(body.data.incident.reportedBy.email, ACCOUNTS.user);
-    // dueBy is derived from the high-priority SLA target.
+    // dueBy is derived from the priority's SLA target.
+    // (Medium, not High/Critical, so the walk-to-Closed test is not blocked
+    // by the "approved RCA required before closing" rule.)
     assert.ok(body.data.incident.dueBy, "dueBy should be derived from the SLA");
 });
 
@@ -210,7 +218,42 @@ test("an admin assigns the incident, which moves it to In Progress", async () =>
     assert.ok(agent, "seeded agent missing from the assignable list");
 
     ctx.agentId = agent._id;
+    ctx.otherAgentId = agents.body.data.users.find((user) => user.email === ACCOUNTS.otherAgent)?._id;
 
+    // Find the seeded department that owns the incident's category.
+    const departments = await api("/departments", { token: ctx.adminToken });
+    assert.equal(departments.status, 200);
+    const owning = departments.body.data.departments.find((department) =>
+        department.categories.some(
+            (category) => String(category._id || category) === String(ctx.categoryId)
+        )
+    );
+    assert.ok(owning, "no seeded department owns the incident category");
+    ctx.departmentId = owning._id;
+    ctx.otherDepartmentId = departments.body.data.departments.find(
+        (department) => String(department._id) !== String(owning._id)
+    )?._id;
+    assert.ok(ctx.otherDepartmentId, "a second department is required for the negative tests");
+
+    // Strict rule: a member cannot be assigned before a department exists -
+    // not even by an Admin.
+    const noDepartment = await api(`/incidents/${ctx.incidentId}/assign`, {
+        method: "PATCH",
+        token: ctx.adminToken,
+        body: { assignedTo: ctx.agentId },
+    });
+    assert.equal(noDepartment.status, 400, JSON.stringify(noDepartment.body));
+    assert.match(noDepartment.body.message, /assign a department/);
+
+    // Step 1: Admin selects the department.
+    const setDepartment = await api(`/incidents/${ctx.incidentId}/assign`, {
+        method: "PATCH",
+        token: ctx.adminToken,
+        body: { department: ctx.departmentId },
+    });
+    assert.equal(setDepartment.status, 200, JSON.stringify(setDepartment.body));
+
+    // Step 2: Admin assigns the member.
     const { status, body } = await api(`/incidents/${ctx.incidentId}/assign`, {
         method: "PATCH",
         token: ctx.adminToken,
@@ -221,6 +264,69 @@ test("an admin assigns the incident, which moves it to In Progress", async () =>
     assert.equal(body.data.incident.assignedTo.email, ACCOUNTS.agent);
     // Picking up New work moves it straight into progress.
     assert.equal(body.data.incident.status, "in_progress");
+});
+
+test("a Support Agent cannot change the department through the API", async () => {
+    const { status, body } = await api(`/incidents/${ctx.incidentId}/assign`, {
+        method: "PATCH",
+        token: ctx.agentToken,
+        body: { department: ctx.otherDepartmentId },
+    });
+
+    assert.equal(status, 403, JSON.stringify(body));
+});
+
+test("a Support Agent cannot assign a member from another department", async () => {
+    const { status, body } = await api(`/incidents/${ctx.incidentId}/assign`, {
+        method: "PATCH",
+        token: ctx.agentToken,
+        body: { assignedTo: ctx.otherAgentId },
+    });
+
+    assert.equal(status, 400, JSON.stringify(body));
+    assert.match(body.message, /active member of this department/);
+});
+
+test("an invalid department/category combination is rejected", async () => {
+    const { status, body } = await api(`/incidents/${ctx.incidentId}/assign`, {
+        method: "PATCH",
+        token: ctx.adminToken,
+        body: { department: ctx.otherDepartmentId },
+    });
+
+    // The other seeded department does not own the incident's Network category.
+    assert.equal(status, 400, JSON.stringify(body));
+    assert.match(body.message, /handles this incident category/);
+});
+
+test("a member cannot be assigned while the incident has no department", async () => {
+    const created = await api("/incidents", {
+        method: "POST",
+        token: ctx.userToken,
+        body: {
+            title: "Smoke test: printer queue is not clearing",
+            description:
+                "Raised by the automated smoke test to verify member assignment requires a department first.",
+            category: ctx.categoryId,
+            priority: "low",
+        },
+    });
+    assert.equal(created.status, 201);
+
+    const byAgent = await api(`/incidents/${created.body.data.incident._id}/assign`, {
+        method: "PATCH",
+        token: ctx.agentToken,
+        body: { assignedTo: ctx.agentId },
+    });
+    assert.equal(byAgent.status, 400, JSON.stringify(byAgent.body));
+    assert.match(byAgent.body.message, /assign a department/);
+
+    const byAdmin = await api(`/incidents/${created.body.data.incident._id}/assign`, {
+        method: "PATCH",
+        token: ctx.adminToken,
+        body: { assignedTo: ctx.otherAgentId },
+    });
+    assert.equal(byAdmin.status, 400, JSON.stringify(byAdmin.body));
 });
 
 test("an agent cannot change the status of work assigned to someone else", async () => {
