@@ -11,4 +11,5 @@ export { notificationApi } from "./notifications";
 export { metaApi } from "./meta";
 export { problemApi } from "./problems";
 export { knownErrorApi } from "./problems";
+export { actionItemApi, actionItemDashboardApi } from "./actionItemApi";
 export { default as client } from "./client";

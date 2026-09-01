@@ -180,3 +180,62 @@ export const PROBLEM_STATUS_TRANSITIONS = {
 };
 
 export const PROBLEM_STATUS_TERMINAL = [PROBLEM_STATUS.RESOLVED];
+
+/* ---------------------------------------------------------------------------
+ * V4 - RCA Action Items (FR4-07..10). Mirrors backend ACTION_ITEM_STATUS.
+ * ------------------------------------------------------------------------- */
+
+export const ACTION_ITEM_STATUS = {
+    OPEN: "open",
+    IN_PROGRESS: "in_progress",
+    DONE: "done",
+    OVERDUE: "overdue",
+};
+
+export const ACTION_ITEM_STATUS_LABELS = {
+    [ACTION_ITEM_STATUS.OPEN]: "Open",
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: "In Progress",
+    [ACTION_ITEM_STATUS.DONE]: "Done",
+    [ACTION_ITEM_STATUS.OVERDUE]: "Overdue",
+};
+
+export const ACTION_ITEM_STATUS_COLORS = {
+    [ACTION_ITEM_STATUS.OPEN]: "blue",
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: "gold",
+    [ACTION_ITEM_STATUS.DONE]: "green",
+    [ACTION_ITEM_STATUS.OVERDUE]: "red",
+};
+
+/** Order for filters/dropdowns. */
+export const ACTION_ITEM_STATUS_ORDER = [
+    ACTION_ITEM_STATUS.OPEN,
+    ACTION_ITEM_STATUS.IN_PROGRESS,
+    ACTION_ITEM_STATUS.DONE,
+    ACTION_ITEM_STATUS.OVERDUE,
+];
+
+export const ACTION_ITEM_STATUS_OPTIONS = asOptions(
+    ACTION_ITEM_STATUS_LABELS,
+    ACTION_ITEM_STATUS_ORDER
+);
+
+/** Mirrors ACTION_ITEM_STATUS_TRANSITIONS on the server. */
+export const ACTION_ITEM_STATUS_TRANSITIONS = {
+    [ACTION_ITEM_STATUS.OPEN]: [
+        ACTION_ITEM_STATUS.IN_PROGRESS,
+        ACTION_ITEM_STATUS.DONE,
+    ],
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: [
+        ACTION_ITEM_STATUS.OPEN,
+        ACTION_ITEM_STATUS.DONE,
+    ],
+    [ACTION_ITEM_STATUS.DONE]: [
+        ACTION_ITEM_STATUS.OPEN,
+        ACTION_ITEM_STATUS.IN_PROGRESS,
+    ],
+    [ACTION_ITEM_STATUS.OVERDUE]: [
+        ACTION_ITEM_STATUS.IN_PROGRESS,
+        ACTION_ITEM_STATUS.OPEN,
+        ACTION_ITEM_STATUS.DONE,
+    ],
+};

@@ -17,8 +17,9 @@ const Department = require("../models/Department");
 const DepartmentUser = require("../models/DepartmentUser");
 const Problem = require("../models/Problem");
 const RootCauseAnalysis = require("../models/RootCauseAnalysis");
+const ActionItem = require("../models/ActionItem");
 
-const { ROLES, STATUS, PRIORITY, ACTIVITY_ACTIONS, PROBLEM_STATUS } = require("../constants");
+const { ROLES, STATUS, PRIORITY, ACTIVITY_ACTIONS, PROBLEM_STATUS, ACTION_ITEM_STATUS } = require("../constants");
 
 /**
  * Seeds a realistic demo data set so the portal can be reviewed without
@@ -222,6 +223,7 @@ const clearCollections = async () => {
         DepartmentUser.deleteMany({}),
         Problem.deleteMany({}),
         RootCauseAnalysis.deleteMany({}),
+        ActionItem.deleteMany({}),
     ]);
 
     logger.info("Cleared existing collections");
@@ -505,6 +507,103 @@ const seedProblems = async (usersByEmail, categoriesByName) => {
     return { knownError, newProblem };
 };
 
+/**
+ * V4 - RCA Action Items demo data (FR4-07..08). Adds approved RCAs where the
+ * existing seed has none (the incident-scoped one), then spreads a realistic
+ * set of action items across the approved incident- and problem-scoped RCAs so
+ * the tracker list, notifications and dashboard widget all have data.
+ */
+const seedActionItems = async (usersByEmail) => {
+    const admin = usersByEmail.get("admin@zybisys.com");
+    const agentRahul = usersByEmail.get("rahul.agent@zybisys.com");
+    const agentPriya = usersByEmail.get("priya.agent@zybisys.com");
+
+    // Approved incident-scoped RCA for the (still open) failed backup incident.
+    const backupIncident = await Incident.findOne({
+        title: "Backup job for the document server failed three nights running",
+    }).exec();
+
+    let incidentRca = null;
+    if (backupIncident) {
+        incidentRca = await RootCauseAnalysis.create({
+            incident: backupIncident._id,
+            rootCauseCategory: "technology",
+            rootCauseDescription:
+                "The backup target filled to capacity, so the nightly job aborted before copying any data.",
+            why1: "Why did the backup fail?", "why2": "Why did the target run out of space?",
+            why3: "Why was the retention policy not cleaning archives?", "why4": "Why was the alert not raised?",
+            why5: "Why was the capacity threshold not monitored?",
+            correctiveActions: "Purge obsolete archives and raise the capacity monitoring threshold.",
+            preventiveActions: "Add a capacity alerting rule to the monitoring stack.",
+            status: "approved",
+            author: admin._id,
+            reviewedBy: admin._id,
+        });
+    }
+
+    // The approved problem-scoped RCA created in seedProblems.
+    const problemRca = await RootCauseAnalysis.findOne({ problem: { $ne: null }, status: "approved" }).exec();
+
+    const days = (offset) => new Date(Date.now() + offset * 24 * 3600000);
+    const items = [];
+
+    if (incidentRca) {
+        items.push(
+            {
+                rcaId: incidentRca._id,
+                description: "Purge backup archives older than the retention policy to bring the target under 85% capacity.",
+                ownerId: agentRahul._id,
+                dueDate: days(-1),
+                status: ACTION_ITEM_STATUS.OVERDUE,
+                overdueNotifiedAt: days(-1),
+            },
+            {
+                rcaId: incidentRca._id,
+                description: "Raise the monitoring threshold so the backup target cannot reach 98% unnoticed again.",
+                ownerId: agentRahul._id,
+                dueDate: days(3),
+                status: ACTION_ITEM_STATUS.IN_PROGRESS,
+            }
+        );
+    }
+
+    if (problemRca) {
+        items.push(
+            {
+                rcaId: problemRca._id,
+                description: "Apply the patched concentrator firmware across all regions and confirm session stability.",
+                ownerId: agentRahul._id,
+                dueDate: days(4),
+                status: ACTION_ITEM_STATUS.OPEN,
+            },
+            {
+                rcaId: problemRca._id,
+                description: "Add peak-load simulation for concentrator firmware to the release checklist.",
+                ownerId: agentPriya._id,
+                dueDate: days(-3),
+                status: ACTION_ITEM_STATUS.OVERDUE,
+                overdueNotifiedAt: days(-3),
+            }
+        );
+    }
+
+    let created = 0;
+    for (const spec of items) {
+        const actionItem = new ActionItem({
+            rcaId: spec.rcaId,
+            description: spec.description,
+            ownerId: spec.ownerId,
+            dueDate: spec.dueDate,
+            status: spec.status,
+            overdueNotifiedAt: spec.overdueNotifiedAt || null,
+        });
+        await actionItem.save();
+        created += 1;
+    }
+
+    logger.info(`Created ${created} action items`);
+};
+
 const run = async () => {
     validateEnv();
     await connectDB();
@@ -529,6 +628,7 @@ const run = async () => {
 
     await seedIncidents(usersByEmail, categoriesByName, departmentsByCategory);
     await seedProblems(usersByEmail, categoriesByName);
+    await seedActionItems(usersByEmail);
 
     // Make sure the indexes declared in the schemas actually exist, so a fresh
     // database behaves like a long-running one.
@@ -543,6 +643,7 @@ const run = async () => {
         DepartmentUser.syncIndexes(),
         Problem.syncIndexes(),
         RootCauseAnalysis.syncIndexes(),
+        ActionItem.syncIndexes(),
     ]);
 
     console.log("\n=========================================================");

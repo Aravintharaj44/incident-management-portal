@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { App, Alert, Button, Divider, Form, Input, Select, Space, Tag, Typography } from "antd";
 import { incidentApi } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
+import ActionItemsPanel from "../actionItems/ActionItemsPanel";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -37,6 +38,7 @@ const RcaPanel = ({ incidentId, rca, onChange }) => {
             {editable && <Space><Button type="primary" htmlType="submit" loading={saving}>Save draft</Button>{rca && <Button onClick={submit}>Submit for review</Button>}</Space>}
         </Form>
         {isAdmin && rca?.status === "in_review" && <Space style={{ marginTop: 16 }}><Input value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Comment required when returning" /><Button danger onClick={() => review("returned")}>Return</Button><Button type="primary" onClick={() => review("approved")}>Approve</Button></Space>}
+        {rca?.status === "approved" && <><Divider /><ActionItemsPanel rcaId={rca._id} /></>}
     </>;
 };
 export default RcaPanel;

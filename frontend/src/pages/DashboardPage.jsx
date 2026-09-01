@@ -28,7 +28,7 @@ import {
 } from "@ant-design/icons";
 import html2canvas from "html2canvas";
 import dayjs from "dayjs";
-import { categoryApi, dashboardApi } from "../api";
+import { categoryApi, dashboardApi, actionItemDashboardApi } from "../api";
 import { useAuth } from "../hooks/useAuth";
 import PageHeader from "../components/common/PageHeader";
 import StatCard from "../components/dashboard/StatCard";
@@ -68,6 +68,7 @@ const DashboardPage = () => {
     const [recent, setRecent] = useState(null);
     const [workload, setWorkload] = useState([]);
     const [advanced, setAdvanced] = useState(null);
+    const [actionItemSummary, setActionItemSummary] = useState(null);
     const [analyticsFilters, setAnalyticsFilters] = useState({});
     const [analyticsCategories, setAnalyticsCategories] = useState([]);
     const [exportingDashboard, setExportingDashboard] = useState(false);
@@ -92,8 +93,9 @@ const DashboardPage = () => {
                 ];
 
                 if (isAdmin) requests.push(dashboardApi.workload());
+                if (isStaff) requests.push(actionItemDashboardApi.summary());
 
-                const [summaryRes, chartsRes, recentRes, advancedRes, workloadRes] =
+                const [summaryRes, chartsRes, recentRes, advancedRes, workloadRes, actionItemRes] =
                     await Promise.all(requests);
 
                 setSummary(summaryRes.data);
@@ -101,13 +103,14 @@ const DashboardPage = () => {
                 setRecent(recentRes.data);
                 setAdvanced(advancedRes.data);
                 if (workloadRes) setWorkload(workloadRes.data.workload);
+                setActionItemSummary(actionItemRes?.data || null);
             } catch (err) {
                 setError(err);
             } finally {
                 setLoading(false);
             }
         },
-        [isAdmin, trendDays, analyticsFilters]
+        [isAdmin, isStaff, trendDays, analyticsFilters]
     );
 
     useEffect(() => {
@@ -543,6 +546,112 @@ const DashboardPage = () => {
                             },
                         ]}
                     />
+                </Card>
+            )}
+
+            {/* --- RCA Action Items (FR4-09) ------------------------------- */}
+            {isStaff && (
+                <Card title="RCA action items" style={{ marginTop: 16 }}>
+                    <Row gutter={[16, 16]}>
+                        <Col xs={12} sm={6}>
+                            <StatCard
+                                title="Total"
+                                value={actionItemSummary?.counts?.total || 0}
+                                icon={<FileTextOutlined />}
+                                color="#722ed1"
+                                hint="All statuses"
+                            />
+                        </Col>
+                        <Col xs={12} sm={6}>
+                            <StatCard
+                                title="Open"
+                                value={
+                                    (actionItemSummary?.counts?.open || 0) +
+                                    (actionItemSummary?.counts?.inProgress || 0)
+                                }
+                                icon={<ClockCircleOutlined />}
+                                color="#1677ff"
+                                hint="Open + in progress"
+                            />
+                        </Col>
+                        <Col xs={12} sm={6}>
+                            <StatCard
+                                title="Overdue"
+                                value={actionItemSummary?.counts?.overdue || 0}
+                                icon={<WarningOutlined />}
+                                color="#ff4d4f"
+                                hint="Past due date"
+                            />
+                        </Col>
+                        <Col xs={12} sm={6}>
+                            <StatCard
+                                title="Done"
+                                value={actionItemSummary?.counts?.done || 0}
+                                icon={<CheckCircleOutlined />}
+                                color="#52c41a"
+                                hint="Completed"
+                            />
+                        </Col>
+                    </Row>
+                    <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+                        <Col xs={24} lg={8}>
+                            <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+                                Last 30 days
+                            </Text>
+                            <Space size={24}>
+                                <div>
+                                    <Text type="secondary" style={{ display: "block" }}>Created</Text>
+                                    <Title level={3} style={{ margin: 0 }}>
+                                        {actionItemSummary?.counts?.recentlyCreated || 0}
+                                    </Title>
+                                </div>
+                                <div>
+                                    <Text type="secondary" style={{ display: "block" }}>Completed</Text>
+                                    <Title level={3} style={{ margin: 0 }}>
+                                        {actionItemSummary?.counts?.recentlyCompleted || 0}
+                                    </Title>
+                                </div>
+                            </Space>
+                        </Col>
+                        <Col xs={24} lg={16}>
+                            <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+                                RCA with open action items
+                            </Text>
+                            <Table
+                                rowKey="rcaId"
+                                size="small"
+                                dataSource={actionItemSummary?.byRca || []}
+                                pagination={false}
+                                locale={{ emptyText: "No open action items on any RCA you can see" }}
+                                columns={[
+                                    {
+                                        title: "RCA",
+                                        key: "rca",
+                                        render: (_value, record) =>
+                                            record.incident ? (
+                                                <Link to={`/incidents/${record.incident}`}>
+                                                    Incident-anchored RCA
+                                                </Link>
+                                            ) : record.problem ? (
+                                                <Link to={`/problems/${record.problem}`}>
+                                                    Problem-anchored RCA
+                                                </Link>
+                                            ) : (
+                                                <Text type="secondary">RCA</Text>
+                                            ),
+                                    },
+                                    {
+                                        title: "Open action items",
+                                        dataIndex: "open",
+                                        width: 160,
+                                        render: (value) => (
+                                            <Tag color={value > 0 ? "blue" : "default"}>{value}</Tag>
+                                        ),
+                                    },
+                                ]}
+                            />
+                        </Col>
+                    </Row>
                 </Card>
             )}
 

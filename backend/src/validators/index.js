@@ -4,8 +4,8 @@ const {
     STATUS_VALUES,
     PRIORITY_VALUES,
     PROBLEM_STATUS_VALUES,
+    ACTION_ITEM_STATUS_VALUES,
 } = require("../constants");
-
 /**
  * Request validation rules (BRD s17: "Validate all inputs on the backend, even
  * if the frontend also validates").
@@ -461,6 +461,86 @@ const problemRcaValidators = {
     byProblem: [param("id").isMongoId().withMessage("Invalid problem ID")],
     review: [param("id").isMongoId().withMessage("Invalid problem ID"), body("status").isIn(["approved", "returned"]), body("reviewComment").optional().trim().isLength({ max: 2000 })],
 };
+
+// V4 - RCA Action Items (FR4-07..10)
+const actionItemValidators = {
+    create: [
+        body("rcaId").isMongoId().withMessage("Please select a valid RCA"),
+        body("description")
+            .trim()
+            .isLength({ min: 10, max: 5000 })
+            .withMessage("Description must be between 10 and 5000 characters"),
+        body("ownerId").isMongoId().withMessage("Please select a valid owner"),
+        body("dueDate")
+            .isISO8601()
+            .withMessage("Please provide a valid due date"),
+    ],
+
+    update: [
+        objectId("id"),
+        body("description")
+            .optional()
+            .trim()
+            .isLength({ min: 10, max: 5000 })
+            .withMessage("Description must be between 10 and 5000 characters"),
+        body("dueDate")
+            .optional()
+            .isISO8601()
+            .withMessage("Please provide a valid due date"),
+        body("completionNote")
+            .optional({ nullable: true })
+            .trim()
+            .isLength({ max: 5000 })
+            .withMessage("Completion note cannot exceed 5000 characters"),
+    ],
+
+    updateStatus: [
+        objectId("id"),
+        body("status")
+            .isIn(ACTION_ITEM_STATUS_VALUES)
+            .withMessage(`Status must be one of: ${ACTION_ITEM_STATUS_VALUES.join(", ")}`),
+        body("completionNote")
+            .optional({ nullable: true })
+            .trim()
+            .isLength({ max: 5000 })
+            .withMessage("Completion note cannot exceed 5000 characters"),
+    ],
+
+    updateOwner: [
+        objectId("id"),
+        body("ownerId").isMongoId().withMessage("Please select a valid owner"),
+    ],
+
+    byId: [objectId("id")],
+
+    list: [
+        query("page").optional().isInt({ min: 1 }).withMessage("Page must be 1 or more"),
+        query("limit")
+            .optional()
+            .isInt({ min: 1, max: 100 })
+            .withMessage("Limit must be between 1 and 100"),
+        query("rcaId").optional().isMongoId().withMessage("Invalid RCA ID"),
+        query("incidentId").optional().isMongoId().withMessage("Invalid incident ID"),
+        query("problemId").optional().isMongoId().withMessage("Invalid problem ID"),
+        // "me" is a supported owner filter - it resolves to the caller.
+        query("ownerId")
+            .optional()
+            .custom((value) => value === "me" || /^[a-f\d]{24}$/i.test(String(value)))
+            .withMessage("Invalid owner ID"),
+        query("status")
+            .optional()
+            .custom((value) => {
+                const values = String(value).split(",");
+                return values.every((item) => ACTION_ITEM_STATUS_VALUES.includes(item));
+            })
+            .withMessage(`Status must be one of: ${ACTION_ITEM_STATUS_VALUES.join(", ")}`),
+        query("sortOrder")
+            .optional()
+            .isIn(["asc", "desc"])
+            .withMessage("sortOrder must be 'asc' or 'desc'"),
+    ],
+};
+
 module.exports = {
     authValidators,
     userValidators,
@@ -473,5 +553,6 @@ module.exports = {
     incidentLinkValidator,
     problemValidators,
     knownErrorValidators,
-    problemRcaValidators
+    problemRcaValidators,
+    actionItemValidators,
 };

@@ -108,7 +108,6 @@ const canChangeDepartment = (user) => isAdmin(user);
 
 /** Linking affects two records, so it is deliberately limited to support staff. */
 const canManageLinks = (user) => isAdmin(user) || isAgent(user);
-
 const canComment = (user, incident) => canView(user, incident);
 
 /** Only staff may write, or read, internal notes. */
@@ -138,6 +137,33 @@ const assertValidTransition = (currentStatus, nextStatus) => {
     }
 };
 
+/* --------------------------------------------------------------------------
+ * V4 - RCA Action Items (FR4-07..09).
+ *
+ * Action items hang off an approved RCA and are a staff concern, mirroring the
+ * problem-management rules: Admins and (in some cases) Support Agents may
+ * manage them; an End User never gains management access.
+ *
+ * A Support Agent may manage an action item they own, or (as with incidents)
+ * one that is still unassigned. Admins may manage every action item.
+ * ------------------------------------------------------------------------ */
+
+/** Only active Admin/Support Agent users may own an action item (FR4-07). */
+const canOwnActionItem = (user) => isStaff(user) && user.isActive !== false;
+
+/**
+ * A Support Agent can manage (edit/status/owner) action items they own, or any
+ * that have no owner yet. Admins manage everything.
+ */
+const canManageActionItem = (user, actionItem) => {
+    if (isAdmin(user)) return true;
+    if (!isAgent(user)) return false;
+    return !actionItem.ownerId || idOf(actionItem.ownerId) === idOf(user._id);
+};
+
+/** Only an Admin may create/assign action items to arbitrary owners. */
+const canAssignActionItem = (user) => isAdmin(user);
+
 module.exports = {
     idOf,
     isAdmin,
@@ -162,4 +188,7 @@ module.exports = {
     canOwnProblem,
     problemVisibilityFilter,
     assertProblemTransition,
+    canOwnActionItem,
+    canManageActionItem,
+    canAssignActionItem,
 };

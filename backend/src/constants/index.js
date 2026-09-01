@@ -94,6 +94,12 @@ const ACTIVITY_ACTIONS = {
     PROBLEM_OWNER_CHANGED: "problem_owner_changed",
     INCIDENT_PROBLEM_LINKED: "incident_problem_linked",
     INCIDENT_PROBLEM_UNLINKED: "incident_problem_unlinked",
+    // V4 - RCA Action Items (FR4-07..10)
+    ACTION_ITEM_CREATED: "action_item_created",
+    ACTION_ITEM_UPDATED: "action_item_updated",
+    ACTION_ITEM_ASSIGNED: "action_item_assigned",
+    ACTION_ITEM_STATUS_CHANGED: "action_item_status_changed",
+    ACTION_ITEM_COMPLETED: "action_item_completed",
 };
 
 /** Problem Management statuses (FR4-01). */
@@ -131,6 +137,10 @@ const NOTIFICATION_TYPES = {
     STATUS_CHANGED: "status_changed",
     COMMENT_ADDED: "comment_added",
     INCIDENT_OVERDUE: "incident_overdue",
+    // V4 - Action Item notifications (FR4-08)
+    ACTION_ITEM_ASSIGNED: "action_item_assigned",
+    ACTION_ITEM_DUE_SOON: "action_item_due_soon",
+    ACTION_ITEM_OVERDUE: "action_item_overdue",
 };
 
 /** Human-readable labels, reused by the email templates and the CSV export. */
@@ -155,23 +165,52 @@ const ROLE_LABELS = {
     [ROLES.USER]: "End User",
 };
 
-module.exports = {
-    ROLES,
-    ROLE_VALUES,
-    ROLE_LABELS,
-    STATUS,
-    STATUS_VALUES,
-    STATUS_LABELS,
-    STATUS_TRANSITIONS,
-    TERMINAL_STATUSES,
-    PRIORITY,
-    PRIORITY_VALUES,
-    PRIORITY_LABELS,
-    PRIORITY_WEIGHT,
-    SLA_HOURS,
-    ACTIVITY_ACTIONS,
-    NOTIFICATION_TYPES,
+const ACTION_ITEM_STATUS = {
+    OPEN:"open",
+    IN_PROGRESS:"in_progress",
+    DONE:"done",
+    OVERDUE:"overdue",
+}
+
+const ACTION_ITEM_STATUS_VALUES = Object.values(ACTION_ITEM_STATUS);
+
+const ACTION_ITEM_STATUS_LABELS = {
+    [ACTION_ITEM_STATUS.OPEN]: "Open",
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: "In Progress",
+    [ACTION_ITEM_STATUS.DONE]: "Done",
+    [ACTION_ITEM_STATUS.OVERDUE]: "Overdue",
 };
+
+/**
+ * Allowed Action Item status transitions (FR4-07 workflow). Open/In Progress
+ * may be completed; an item that is done never returns to overdue. Overdue can
+ * be completed, reopened to In Progress/Open, or acted on. Reopening an item
+ * out of Done is supported and clears completion evidence consistently.
+ */
+const ACTION_ITEM_STATUS_TRANSITIONS = {
+    [ACTION_ITEM_STATUS.OPEN]: [ACTION_ITEM_STATUS.IN_PROGRESS, ACTION_ITEM_STATUS.DONE],
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: [ACTION_ITEM_STATUS.OPEN, ACTION_ITEM_STATUS.DONE],
+    [ACTION_ITEM_STATUS.DONE]: [ACTION_ITEM_STATUS.OPEN, ACTION_ITEM_STATUS.IN_PROGRESS],
+    [ACTION_ITEM_STATUS.OVERDUE]: [ACTION_ITEM_STATUS.IN_PROGRESS, ACTION_ITEM_STATUS.OPEN, ACTION_ITEM_STATUS.DONE],
+};
+
+// module.exports = {
+//     ROLES,
+//     ROLE_VALUES,
+//     ROLE_LABELS,
+//     STATUS,
+//     STATUS_VALUES,
+//     STATUS_LABELS,
+//     STATUS_TRANSITIONS,
+//     TERMINAL_STATUSES,
+//     PRIORITY,
+//     PRIORITY_VALUES,
+//     PRIORITY_LABELS,
+//     PRIORITY_WEIGHT,
+//     SLA_HOURS,
+//     ACTIVITY_ACTIONS,
+//     NOTIFICATION_TYPES,
+// };
 
 module.exports = {
     ROLES,
@@ -193,4 +232,8 @@ module.exports = {
     PROBLEM_STATUS_VALUES,
     PROBLEM_STATUS_LABELS,
     PROBLEM_STATUS_TRANSITIONS,
+    ACTION_ITEM_STATUS,
+    ACTION_ITEM_STATUS_VALUES,
+    ACTION_ITEM_STATUS_LABELS,
+    ACTION_ITEM_STATUS_TRANSITIONS,
 };

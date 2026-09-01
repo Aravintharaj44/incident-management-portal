@@ -192,6 +192,87 @@ const verifyConnection = async () => {
     }
 };
 
+/** Shared shell for RCA Action Item emails (FR4-08). */
+const actionItemLayout = (heading, rows, bodyText, link) => `
+<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f1f1f">
+  <h2 style="color:#1677ff;margin:0 0 12px">${escapeHtml(heading)}</h2>
+  <p style="margin:0 0 16px;line-height:1.6">${escapeHtml(bodyText)}</p>
+  <table style="border-collapse:collapse;width:100%;font-size:14px">
+    ${rows
+        .map(
+            ([label, value]) =>
+                `<tr><td style="padding:6px 12px 6px 0;color:#8c8c8c;white-space:nowrap">${escapeHtml(label)}</td><td style="padding:6px 0;font-weight:500">${escapeHtml(value)}</td></tr>`
+        )
+        .join("")}
+  </table>
+  <p style="margin:24px 0 0">
+    <a href="${escapeHtml(link)}" style="background:#1677ff;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block">Open action item</a>
+  </p>
+  <p style="margin:24px 0 0;font-size:12px;color:#8c8c8c">
+    Incident Management Portal - automated message, please do not reply.
+  </p>
+</div>`;
+
+/**
+ * The RCA an action item hangs off is either incident- or problem-scoped; build
+ * the appropriate client URL so the notification lands somewhere useful.
+ */
+const actionItemLink = (rca) => {
+    const base = env.clientUrls[0];
+    if (rca && rca.incident) return `${base}/incidents/${rca.incident}`;
+    if (rca && rca.problem) return `${base}/problems/${rca.problem}`;
+    return `${base}/dashboard`;
+};
+
+const sendActionItemAssigned = ({ to, actionItem, owner, assignedBy }) =>
+    send({
+        to,
+        subject: "Action item assigned to you",
+        html: actionItemLayout(
+            "An action item has been assigned to you",
+            [
+                ["Description", actionItem.description],
+                ["Due date", new Date(actionItem.dueDate).toLocaleString()],
+                ["Status", (actionItem.status || "").replace("_", " ")],
+                ["Assigned by", assignedBy ? assignedBy.name : "System"],
+            ],
+            `You have been assigned an action item with a due date of ${new Date(actionItem.dueDate).toLocaleString()}.`,
+            actionItemLink(actionItem.rca)
+        ),
+    });
+
+const sendActionItemDueSoon = ({ to, actionItem }) =>
+    send({
+        to,
+        subject: "Action item due soon",
+        html: actionItemLayout(
+            "Your action item is due soon",
+            [
+                ["Description", actionItem.description],
+                ["Due date", new Date(actionItem.dueDate).toLocaleString()],
+                ["Status", (actionItem.status || "").replace("_", " ")],
+            ],
+            "An action item assigned to you is approaching its due date.",
+            actionItemLink(actionItem.rca)
+        ),
+    });
+
+const sendActionItemOverdue = ({ to, actionItem }) =>
+    send({
+        to,
+        subject: "Action item is OVERDUE",
+        html: actionItemLayout(
+            "Your action item is overdue",
+            [
+                ["Description", actionItem.description],
+                ["Due date", new Date(actionItem.dueDate).toLocaleString()],
+                ["Status", "Overdue"],
+            ],
+            "An action item assigned to you has passed its due date and is still unresolved. Please take action.",
+            actionItemLink(actionItem.rca)
+        ),
+    });
+
 module.exports = {
     send,
     sendIncidentCreated,
@@ -200,4 +281,7 @@ module.exports = {
     sendCommentAdded,
     verifyConnection,
     sendIncidentOverdue,
+    sendActionItemAssigned,
+    sendActionItemDueSoon,
+    sendActionItemOverdue,
 };

@@ -7,6 +7,9 @@ const logger = require("./src/utils/logger");
 const {
     startOverdueIncidentJob,
 } = require("./src/cron/overdueIncidentJob");
+const {
+    startOverdueActionItemJob,
+} = require("./src/cron/overdueActionItemJob");
 
 /**
  * Process bootstrap.
@@ -20,6 +23,7 @@ const startServer = async () => {
         validateEnv();
         await connectDB();
         // startOverdueIncidentJob()
+        // startOverdueActionItemJob()
     } catch (error) {
         logger.error(`Startup failed: ${error.message}`);
         process.exit(1);

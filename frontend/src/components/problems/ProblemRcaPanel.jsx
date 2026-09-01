@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { App, Alert, Button, Divider, Form, Input, Select, Space, Tag, Typography } from "antd";
 import { problemApi } from "../../api";
 import { useAuth } from "../../hooks/useAuth";
+import ActionItemsPanel from "../actionItems/ActionItemsPanel";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -14,6 +15,7 @@ const prompts = ["why1", "why2", "why3", "why4", "why5"];
  * Reuses the same RootCauseAnalysis structure and workflow as incidents, so
  * the RCA here behaves exactly like an incident's RCA. `editable` is passed in
  * from the parent, which derives it from the problem's canManage permission.
+ * Once the RCA is approved, the Action Items tracker appears (FR4-07..10).
  */
 const ProblemRcaPanel = ({ problemId, rca, editable, onChange }) => {
     const { message } = App.useApp();
@@ -55,6 +57,7 @@ const ProblemRcaPanel = ({ problemId, rca, editable, onChange }) => {
             {canEdit && <Space><Button type="primary" htmlType="submit" loading={saving}>Save draft</Button>{rca && <Button onClick={submit}>Submit for review</Button>}</Space>}
         </Form>
         {isAdmin && rca?.status === "in_review" && <Space style={{ marginTop: 16 }}><Input value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} placeholder="Comment required when returning" /><Button danger onClick={() => review("returned")}>Return</Button><Button type="primary" onClick={() => review("approved")}>Approve</Button></Space>}
+        {rca?.status === "approved" && <><Divider /><ActionItemsPanel rcaId={rca._id} /></>}
     </>;
 };
 export default ProblemRcaPanel;
