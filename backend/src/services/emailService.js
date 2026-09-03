@@ -272,6 +272,53 @@ const sendActionItemOverdue = ({ to, actionItem }) =>
             actionItemLink(actionItem.rca)
         ),
     });
+const surveyLink = (token) =>
+    `${env.clientUrls[0]}/survey/${token}`;
+
+const sendPostResolutionSurvey = ({ to, incident, token }) =>
+    send({
+        to,
+        subject: `[${incident.incidentNumber}] How was your support experience?`,
+        html: `
+<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f1f1f">
+
+    <h2 style="color:#1677ff;margin:0 0 12px">
+        How was your support experience?
+    </h2>
+
+    <p style="line-height:1.6">
+        Your incident <strong>${escapeHtml(incident.incidentNumber)}</strong>
+        has been resolved/closed.
+    </p>
+
+    <p style="line-height:1.6">
+        Please take a moment to rate your support experience.
+        Your feedback helps us improve our service.
+    </p>
+
+    <p style="margin:24px 0">
+        <a
+            href="${escapeHtml(surveyLink(token))}"
+            style="
+                background:#1677ff;
+                color:#fff;
+                padding:10px 18px;
+                border-radius:6px;
+                text-decoration:none;
+                display:inline-block;
+            "
+        >
+            Give Feedback
+        </a>
+    </p>
+
+    <p style="font-size:12px;color:#8c8c8c">
+        Incident Management Portal - automated message.
+    </p>
+
+</div>
+    `,
+    });
 
 module.exports = {
     send,
@@ -284,4 +331,5 @@ module.exports = {
     sendActionItemAssigned,
     sendActionItemDueSoon,
     sendActionItemOverdue,
+    sendPostResolutionSurvey
 };

@@ -12,4 +12,5 @@ export { metaApi } from "./meta";
 export { problemApi, knownErrorApi } from "./problems";
 export { actionItemApi, actionItemDashboardApi } from "./actionItemApi";
 export { kbApi } from "./kb";
+export { surveyApi } from "./surveys";
 export { default as client } from "./client";

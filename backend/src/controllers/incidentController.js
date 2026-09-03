@@ -521,6 +521,21 @@ const updateStatus = asyncHandler(async (req, res) => {
     }
 
     await incident.save();
+    notificationService.notifyStatusChanged({
+        incident,
+        oldStatus,
+        newStatus: status,
+        changedBy: req.user,
+    });
+    const enteredTerminalStatus =
+        !TERMINAL_STATUSES.includes(oldStatus) &&
+        TERMINAL_STATUSES.includes(status);
+
+    if (enteredTerminalStatus) {
+        notificationService.notifyPostResolutionSurvey({
+            incident,
+        });
+    }
     // A major incident can explicitly propagate its terminal status to children.
     if (updateLinkedChildren && TERMINAL_STATUSES.includes(status)) {
         const childLinks = await IncidentLink.find({ toIncidentId: incident._id, relationshipType: "Child-Of" }).select("fromIncidentId").lean();

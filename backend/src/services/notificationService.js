@@ -4,7 +4,10 @@ const logger = require("../utils/logger");
 const emailService = require("./emailService");
 const { NOTIFICATION_TYPES, STATUS_LABELS } = require("../constants");
 const { idOf } = require("./permissionService");
-
+const PostResolutionSurvey = require("../models/PostResolutionSurvey");
+const {
+    createPostResolutionSurvey,
+} = require("./surveyService");
 /**
  * Fan-out for FR-09: writes the in-app notification row and fires the matching
  * email.
@@ -241,6 +244,50 @@ const notifyActionItemOverdue = async ({ actionItem, owner }) => {
     }
 };
 
+const notifyPostResolutionSurvey = async ({ incident }) => {
+    try {
+        const reporter = incident.reportedBy;
+
+        if (!reporter) {
+            logger.warn(
+                `Cannot send survey for ${incident.incidentNumber}: reporter not found`
+            );
+            return;
+        }
+
+        const targets = await hydrate([reporter]);
+
+        if (!targets.length) {
+            logger.warn(
+                `Cannot send survey for ${incident.incidentNumber}: reporter email not found`
+            );
+            return;
+        }
+
+        const survey = await createPostResolutionSurvey(incident);
+
+        if (!survey) return;
+
+        await Promise.all(
+            targets.map((to) =>
+                emailService.sendPostResolutionSurvey({
+                    to: to.email,
+                    incident,
+                    token: survey.token,
+                })
+            )
+        );
+
+        logger.info(
+            `Post-resolution survey sent for ${incident.incidentNumber}`
+        );
+    } catch (error) {
+        logger.error(
+            `notifyPostResolutionSurvey failed: ${error.message}`
+        );
+    }
+};
+
 module.exports = {
     notifyIncidentCreated,
     notifyIncidentAssigned,
@@ -249,4 +296,5 @@ module.exports = {
     notifyActionItemAssigned,
     notifyActionItemDueSoon,
     notifyActionItemOverdue,
+    notifyPostResolutionSurvey
 };

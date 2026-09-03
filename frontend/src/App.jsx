@@ -40,6 +40,7 @@ const CategoriesPage = lazy(() => import("./pages/admin/CategoriesPage"));
 const DepartmentsPage = lazy(() => import("./pages/admin/DepartmentsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const ForbiddenPage = lazy(() => import("./pages/ForbiddenPage"));
+const SurveyPage = lazy(() => import("./pages/survey/SurveyPage"));
 
 const RouteFallback = () => (
     <div style={{ display: "grid", placeItems: "center", minHeight: 320 }}>
@@ -54,6 +55,11 @@ const App = () => (
                 {/* Public */}
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                {/* FR4-26 - Post Resolution Survey */}
+                <Route
+                    path="/survey/:token"
+                    element={<SurveyPage />}
+                />
 
                 {/* Everything below requires a session */}
                 <Route element={<ProtectedRoute />}>

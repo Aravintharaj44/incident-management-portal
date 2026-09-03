@@ -176,10 +176,10 @@ const ROLE_LABELS = {
 };
 
 const ACTION_ITEM_STATUS = {
-    OPEN:"open",
-    IN_PROGRESS:"in_progress",
-    DONE:"done",
-    OVERDUE:"overdue",
+    OPEN: "open",
+    IN_PROGRESS: "in_progress",
+    DONE: "done",
+    OVERDUE: "overdue",
 }
 
 const ACTION_ITEM_STATUS_VALUES = Object.values(ACTION_ITEM_STATUS);
@@ -205,32 +205,21 @@ const ACTION_ITEM_STATUS_TRANSITIONS = {
 };
 
 const KBA_STATUS = {
-    DRAFT:"draft",
-    PUBLISHED:"published",
-    RETIRED:"retired",
-    ARCHIVED:"archived"
+    DRAFT: "draft",
+    PUBLISHED: "published",
+    RETIRED: "retired",
+    ARCHIVED: "archived"
 };
 
 const KBA_STATUS_VALUE = Object.values(KBA_STATUS);
 
-// module.exports = {
-//     ROLES,
-//     ROLE_VALUES,
-//     ROLE_LABELS,
-//     STATUS,
-//     STATUS_VALUES,
-//     STATUS_LABELS,
-//     STATUS_TRANSITIONS,
-//     TERMINAL_STATUSES,
-//     PRIORITY,
-//     PRIORITY_VALUES,
-//     PRIORITY_LABELS,
-//     PRIORITY_WEIGHT,
-//     SLA_HOURS,
-//     ACTIVITY_ACTIONS,
-//     NOTIFICATION_TYPES,
-// };
-
+const SURVEY_STATUS = {
+    PENDING: "pending",
+    DONE: "done",
+    REJECTED: "rejected",
+    COMPLETED: "completed",
+}
+const SURVEY_STATUS_VALUE = Object.values(SURVEY_STATUS);
 module.exports = {
     ROLES,
     ROLE_VALUES,
@@ -256,5 +245,7 @@ module.exports = {
     ACTION_ITEM_STATUS_LABELS,
     ACTION_ITEM_STATUS_TRANSITIONS,
     KBA_STATUS,
-    KBA_STATUS_VALUE
+    KBA_STATUS_VALUE,
+    SURVEY_STATUS_VALUE,
+    SURVEY_STATUS,
 };

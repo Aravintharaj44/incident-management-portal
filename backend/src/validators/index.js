@@ -658,6 +658,22 @@ const knowledgeBaseArticleValidators = {
         query("search").optional().trim().isLength({ max: 140 }).withMessage("Search term is too long"),
     ],
 };
+const submitSurveyValidator =
+ [
+    body("rating")
+        .exists()
+        .withMessage("Rating is required")
+        .isInt({ min: 1, max: 5 })
+        .withMessage("Rating must be between 1 and 5"),
+
+    body("comments")
+        .optional({ nullable: true })
+        .isString()
+        .withMessage("Comments must be a string")
+        .trim()
+        .isLength({ max: 5000 })
+        .withMessage("Comments cannot exceed 5000 characters"),
+];
 module.exports = {
     authValidators,
     userValidators,
@@ -672,6 +688,7 @@ module.exports = {
     knownErrorValidators,
     problemRcaValidators,
     actionItemValidators,
-    knowledgeBaseArticleValidators
+    knowledgeBaseArticleValidators,
+    submitSurveyValidator
 };
 

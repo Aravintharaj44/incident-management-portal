@@ -12,6 +12,7 @@ const departmentRoutes = require("./departmentRoutes");
 const problemRoutes = require("./problemRoutes");
 const actionItemRoutes = require("./actionItemRoutes");
 const KnowlegdgeBaseArticle = require('./knowledgeBaseArticleRoutes');
+const surveyRoutes = require("./surveyRoutes");
 
 /**
  * Single mount point for the whole API. app.js only has to mount this one
@@ -32,4 +33,5 @@ router.use("/problems", problemRoutes);
 router.use("/known-errors", problemRoutes.kedb);
 router.use("/action-items", actionItemRoutes);
 router.use("/kba",KnowlegdgeBaseArticle);
+router.use("/surveys", surveyRoutes);
 module.exports = router;
