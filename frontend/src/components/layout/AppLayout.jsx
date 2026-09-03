@@ -17,6 +17,7 @@ import {
     ApiOutlined,
     AppstoreOutlined,
     BarsOutlined,
+    BookOutlined,
     BulbOutlined,
     DashboardOutlined,
     LogoutOutlined,
@@ -93,6 +94,11 @@ const AppLayout = () => {
                 icon: <BulbOutlined />,
                 label: <Link to="/known-errors">Known Errors</Link>,
             });
+            items.push({
+                key: "/kb",
+                icon: <BookOutlined />,
+                label: <Link to="/kb">Knowledge Base</Link>,
+            });
         }
 
         items.push({
@@ -143,6 +149,7 @@ const AppLayout = () => {
         if (pathname.startsWith("/incidents")) return ["/incidents"];
         if (pathname.startsWith("/problems")) return ["/problems"];
         if (pathname.startsWith("/known-errors")) return ["/known-errors"];
+        if (pathname.startsWith("/kb")) return ["/kb"];
         if (pathname.startsWith("/admin/users")) return ["/admin/users"];
         if (pathname.startsWith("/admin/categories")) return ["/admin/categories"];
         if (pathname.startsWith("/admin/departments")) return ["/admin/departments"];

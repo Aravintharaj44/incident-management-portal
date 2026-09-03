@@ -100,6 +100,16 @@ const ACTIVITY_ACTIONS = {
     ACTION_ITEM_ASSIGNED: "action_item_assigned",
     ACTION_ITEM_STATUS_CHANGED: "action_item_status_changed",
     ACTION_ITEM_COMPLETED: "action_item_completed",
+    // V4 - Knowledge Base (FR4-11..15)
+    KB_ARTICLE_CREATED: "kb_article_created",
+    KB_ARTICLE_UPDATED: "kb_article_updated",
+    KB_ARTICLE_PUBLISHED: "kb_article_published",
+    KB_ARTICLE_LINKED: "kb_article_linked",
+    KB_ARTICLE_UNLINKED: "kb_article_unlinked",
+    KB_ARTICLE_FEEDBACK: "kb_article_feedback",
+    // V4 - Incident KB linking (incident-scoped actions)
+    INCIDENT_KB_LINKED: "incident_kb_article_linked",
+    INCIDENT_KB_UNLINKED: "incident_kb_article_unlinked",
 };
 
 /** Problem Management statuses (FR4-01). */
@@ -194,6 +204,15 @@ const ACTION_ITEM_STATUS_TRANSITIONS = {
     [ACTION_ITEM_STATUS.OVERDUE]: [ACTION_ITEM_STATUS.IN_PROGRESS, ACTION_ITEM_STATUS.OPEN, ACTION_ITEM_STATUS.DONE],
 };
 
+const KBA_STATUS = {
+    DRAFT:"draft",
+    PUBLISHED:"published",
+    RETIRED:"retired",
+    ARCHIVED:"archived"
+};
+
+const KBA_STATUS_VALUE = Object.values(KBA_STATUS);
+
 // module.exports = {
 //     ROLES,
 //     ROLE_VALUES,
@@ -236,4 +255,6 @@ module.exports = {
     ACTION_ITEM_STATUS_VALUES,
     ACTION_ITEM_STATUS_LABELS,
     ACTION_ITEM_STATUS_TRANSITIONS,
+    KBA_STATUS,
+    KBA_STATUS_VALUE
 };

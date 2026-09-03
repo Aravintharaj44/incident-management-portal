@@ -239,3 +239,33 @@ export const ACTION_ITEM_STATUS_TRANSITIONS = {
         ACTION_ITEM_STATUS.DONE,
     ],
 };
+
+/* ---------------------------------------------------------------------------
+ * V4 - Knowledge Base (FR4-11..15). Mirrors backend KBA_STATUS.
+ * ------------------------------------------------------------------------- */
+
+export const KBA_STATUS = {
+    DRAFT: "draft",
+    PUBLISHED: "published",
+    ARCHIVED: "archived",
+};
+
+export const KBA_STATUS_LABELS = {
+    [KBA_STATUS.DRAFT]: "Draft",
+    [KBA_STATUS.PUBLISHED]: "Published",
+    [KBA_STATUS.ARCHIVED]: "Archived",
+};
+
+export const KBA_STATUS_COLORS = {
+    [KBA_STATUS.DRAFT]: "orange",
+    [KBA_STATUS.PUBLISHED]: "green",
+    [KBA_STATUS.ARCHIVED]: "default",
+};
+
+export const KBA_STATUS_ORDER = [
+    KBA_STATUS.DRAFT,
+    KBA_STATUS.PUBLISHED,
+    KBA_STATUS.ARCHIVED,
+];
+
+export const KBA_STATUS_OPTIONS = asOptions(KBA_STATUS_LABELS, KBA_STATUS_ORDER);

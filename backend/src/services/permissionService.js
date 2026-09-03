@@ -164,6 +164,34 @@ const canManageActionItem = (user, actionItem) => {
 /** Only an Admin may create/assign action items to arbitrary owners. */
 const canAssignActionItem = (user) => isAdmin(user);
 
+/* --------------------------------------------------------------------------
+ * V4 - Knowledge Base (FR4-11..15).
+ *
+ * Staff (Admin + Support Agent) may create, edit, publish and manage KB
+ * articles. All authenticated users may view published articles and submit
+ * feedback. Only staff may see draft articles.
+ * ------------------------------------------------------------------------ */
+
+/** Staff may create KB articles. */
+const canCreateKB = (user) => isAdmin(user) || isAgent(user);
+
+/** Admin or the original author may edit a KB article. */
+const canEditKB = (user, article) => {
+    if (isAdmin(user)) return true;
+    if (!isAgent(user)) return false;
+    if (!article) return true;
+    return String(article.authorID) === String(user._id);
+};
+
+/** Staff may manage (publish, delete) KB articles. */
+const canManageKB = (user) => isAdmin(user) || isAgent(user);
+
+/** Staff may view draft KB articles; end users only see published. */
+const canViewKBDrafts = (user) => isAdmin(user) || isAgent(user);
+
+/** Staff may link/unlink KB articles to incidents and problems. */
+const canLinkKB = (user) => isAdmin(user) || isAgent(user);
+
 module.exports = {
     idOf,
     isAdmin,
@@ -191,4 +219,9 @@ module.exports = {
     canOwnActionItem,
     canManageActionItem,
     canAssignActionItem,
+    canCreateKB,
+    canEditKB,
+    canManageKB,
+    canViewKBDrafts,
+    canLinkKB,
 };

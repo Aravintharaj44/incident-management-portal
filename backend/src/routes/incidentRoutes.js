@@ -9,6 +9,7 @@ const {
     commentValidators,
     incidentLinkValidator,
     rcaValidators,
+    knowledgeBaseArticleValidators
 } = require("../validators");
 
 const {
@@ -23,6 +24,10 @@ const {
     exportIncidents,
     linkProblem,
     unlinkProblem,
+    addKBArticle,
+    listKBArticles,
+    unlinkKBArticle,
+    searchKBForIncident,
 } = require("../controllers/incidentController");
 
 const {
@@ -137,6 +142,32 @@ router.delete(
     incidentValidators.byId,
     validate,
     unlinkProblem
+);
+
+/** Incident <-> KB Article linking (FR4-14) - multiple articles. */
+router.get(
+    "/:id/kb-articles/search",
+    knowledgeBaseArticleValidators.listKbForIncident,
+    validate,
+    searchKBForIncident
+);
+router.get(
+    "/:id/kb-articles",
+    incidentValidators.byId,
+    validate,
+    listKBArticles
+);
+router.post(
+    "/:id/kb-articles",
+    knowledgeBaseArticleValidators.addKbToIncident,
+    validate,
+    addKBArticle
+);
+router.delete(
+    "/:id/kb-articles/:articleId",
+    knowledgeBaseArticleValidators.removeKbFromIncident,
+    validate,
+    unlinkKBArticle
 );
 
 /** RCA */

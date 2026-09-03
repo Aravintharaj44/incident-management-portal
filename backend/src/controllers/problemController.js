@@ -3,6 +3,7 @@ const Problem = require("../models/Problem");
 const Incident = require("../models/Incident");
 const User = require("../models/User");
 const RootCauseAnalysis = require("../models/RootCauseAnalysis");
+const KBArticle = require("../models/KnowledgeBaseArticle");
 const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 const logger = require("../utils/logger");
@@ -24,6 +25,7 @@ const isValidId = (value) => mongoose.Types.ObjectId.isValid(value);
 const POPULATE = [
     { path: "category", select: "name isActive" },
     { path: "ownerId", select: "name email role isActive" },
+    { path: "kbArticleId", select: "title status categories" },
 ];
 
 /**
@@ -529,6 +531,72 @@ const getKnownError = asyncHandler(async (req, res) => {
     return successResponse(res, 200, "Known error retrieved", { problem, rca, incidents });
 });
 
+/**
+ * PATCH /api/v1/problems/:id/kb-article (FR4-14)
+ * Link a published KB article to this problem.
+ */
+const linkKBArticle = asyncHandler(async (req, res) => {
+    const problem = await loadProblem(req.params.id, req.user);
+
+    const { kbArticleId } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(kbArticleId)) {
+        throw ApiError.badRequest("Invalid KB article ID");
+    }
+
+    const article = await KBArticle.findById(kbArticleId);
+    if (!article) throw ApiError.notFound("KB article not found");
+    if (article.status !== "published") {
+        throw ApiError.badRequest("Only published articles can be linked");
+    }
+
+    problem.kbArticleId = article._id;
+    await problem.save();
+
+    await activityService.record({
+        problem: problem._id,
+        action: ACTIVITY_ACTIONS.KB_ARTICLE_LINKED,
+        performedBy: req.user._id,
+        field: "kbArticleId",
+        oldValue: "None",
+        newValue: article.title,
+    });
+
+    const updated = await Problem.findById(problem._id).populate(POPULATE).lean();
+    return successResponse(res, 200, `KB article linked to ${problem.problemNumber}`, {
+        problem: updated,
+    });
+});
+
+/**
+ * DELETE /api/v1/problems/:id/kb-article (FR4-14)
+ * Unlink the KB article from this problem.
+ */
+const unlinkKBArticle = asyncHandler(async (req, res) => {
+    const problem = await loadProblem(req.params.id, req.user);
+
+    if (!problem.kbArticleId) {
+        throw ApiError.badRequest("This problem has no linked KB article");
+    }
+
+    const articleTitle = problem.kbArticleId?.title || "a KB article";
+
+    await Problem.updateOne({ _id: problem._id }, { $set: { kbArticleId: null } });
+
+    await activityService.record({
+        problem: problem._id,
+        action: ACTIVITY_ACTIONS.KB_ARTICLE_UNLINKED,
+        performedBy: req.user._id,
+        field: "kbArticleId",
+        oldValue: articleTitle,
+        newValue: "None",
+    });
+
+    const updated = await Problem.findById(problem._id).populate(POPULATE).lean();
+    return successResponse(res, 200, `KB article unlinked from ${problem.problemNumber}`, {
+        problem: updated,
+    });
+});
+
 module.exports = {
     listProblems,
     getProblem,
@@ -542,4 +610,6 @@ module.exports = {
     listKnownErrors,
     getKnownError,
     suggestProblemFromIncident,
+    linkKBArticle,
+    unlinkKBArticle,
 };

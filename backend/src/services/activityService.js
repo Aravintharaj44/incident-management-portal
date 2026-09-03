@@ -11,6 +11,7 @@ const logger = require("../utils/logger");
 const record = async ({
     incident,
     problem,
+    kbArticle,
     action,
     performedBy,
     field = null,
@@ -22,6 +23,7 @@ const record = async ({
         return await ActivityLog.create({
             incident,
             problem,
+            kbArticle,
             action,
             performedBy,
             field,

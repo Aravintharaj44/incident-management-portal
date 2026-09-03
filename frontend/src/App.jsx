@@ -30,6 +30,9 @@ const ProblemsPage = lazy(() => import("./pages/problems/ProblemsPage"));
 const ProblemCreatePage = lazy(() => import("./pages/problems/ProblemCreatePage"));
 const ProblemDetailPage = lazy(() => import("./pages/problems/ProblemDetailPage"));
 const KnownErrorsPage = lazy(() => import("./pages/problems/KnownErrorsPage"));
+const KbListPage = lazy(() => import("./pages/kb/KbListPage"));
+const KbDetailPage = lazy(() => import("./pages/kb/KbDetailPage"));
+const KbCreateEditPage = lazy(() => import("./pages/kb/KbCreateEditPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const ApiDocsPage = lazy(() => import("./pages/ApiDocsPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
@@ -78,6 +81,12 @@ const App = () => (
                             <Route path="/problems/:id" element={<ProblemDetailPage />} />
                             <Route path="/known-errors" element={<KnownErrorsPage />} />
                         </Route>
+
+                        {/* KB - all authenticated users can view; staff can create/edit */}
+                        <Route path="/kb" element={<KbListPage />} />
+                        <Route path="/kb/new" element={<KbCreateEditPage />} />
+                        <Route path="/kb/:id" element={<KbDetailPage />} />
+                        <Route path="/kb/:id/edit" element={<KbCreateEditPage />} />
 
                         {/* Admin only (FR-13) */}
                         <Route element={<RoleRoute allowedRoles={[ROLES.ADMIN]} />}>

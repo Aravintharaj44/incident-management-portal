@@ -5,6 +5,7 @@ const {
     PRIORITY_VALUES,
     PROBLEM_STATUS_VALUES,
     ACTION_ITEM_STATUS_VALUES,
+    KBA_STATUS_VALUE,
 } = require("../constants");
 /**
  * Request validation rules (BRD s17: "Validate all inputs on the backend, even
@@ -540,7 +541,123 @@ const actionItemValidators = {
             .withMessage("sortOrder must be 'asc' or 'desc'"),
     ],
 };
-
+const knowledgeBaseArticleValidators = {
+    create: [
+        body("title")
+            .trim()
+            .isLength({ min: 3, max: 250 })
+            .withMessage("Title must be between 3 and 250 characters")
+            .customSanitizer(stripTags),
+        body("body")
+            .trim()
+            .isLength({ min: 10 })
+            .withMessage("Body must be at least 10 characters"),
+        body("categories")
+            .isArray({ min: 1 })
+            .withMessage("At least one category is required"),
+        body("categories.*")
+            .optional()
+            .isMongoId()
+            .withMessage("Each category must be a valid ID"),
+        body("tags")
+            .optional()
+            .custom((value) => {
+                if (value === null || value === undefined) return true;
+                if (!Array.isArray(value)) return false;
+                return value.every((t) => typeof t === "string" && t.trim().length > 0);
+            })
+            .withMessage("Tags must be an array of non-empty strings"),
+        body("status")
+            .optional()
+            .isIn(KBA_STATUS_VALUE)
+            .withMessage(`Status must be one of: ${KBA_STATUS_VALUE.join(", ")}`),
+    ],
+    update: [
+        objectId("id"),
+        body("title")
+            .optional()
+            .trim()
+            .isLength({ min: 3, max: 250 })
+            .withMessage("Title must be between 3 and 250 characters")
+            .customSanitizer(stripTags),
+        body("body")
+            .optional()
+            .trim()
+            .isLength({ min: 10 })
+            .withMessage("Body must be at least 10 characters"),
+        body("categories")
+            .optional()
+            .isArray({ min: 1 })
+            .withMessage("At least one category is required"),
+        body("categories.*")
+            .optional()
+            .isMongoId()
+            .withMessage("Each category must be a valid ID"),
+        body("tags")
+            .optional()
+            .custom((value) => {
+                if (value === null || value === undefined) return true;
+                if (!Array.isArray(value)) return false;
+                return value.every((t) => typeof t === "string" && t.trim().length > 0);
+            })
+            .withMessage("Tags must be an array of non-empty strings"),
+        body("status")
+            .optional()
+            .isIn(KBA_STATUS_VALUE)
+            .withMessage(`Status must be one of: ${KBA_STATUS_VALUE.join(", ")}`),
+    ],
+    byId: [objectId("id")],
+    list: [
+        query("page").optional().isInt({ min: 1 }).withMessage("Page must be 1 or more"),
+        query("limit")
+            .optional()
+            .isInt({ min: 1, max: 100 })
+            .withMessage("Limit must be between 1 and 100"),
+        query("search")
+            .optional()
+            .trim()
+            .isLength({ max: 140 })
+            .withMessage("Search term is too long"),
+        query("sortOrder")
+            .optional()
+            .isIn(["asc", "desc"])
+            .withMessage("sortOrder must be 'asc' or 'desc'"),
+    ],
+    feedback: [
+        objectId("id"),
+        body("value")
+            .isIn(["helpful", "not_helpful"])
+            .withMessage("Value must be 'helpful' or 'not_helpful'"),
+    ],
+    linkKB: [
+        objectId("id"),
+        body("kbArticleId")
+            .isMongoId()
+            .withMessage("Please select a valid KB article"),
+    ],
+    /** Add a KB article to an incident (multi-article). */
+    addKbToIncident: [
+        objectId("id"),
+        body("kbArticleId")
+            .isMongoId()
+            .withMessage("Please select a valid KB article"),
+    ],
+    /** Remove a single KB article from an incident. */
+    removeKbFromIncident: [
+        objectId("id"),
+        param("articleId")
+            .isMongoId()
+            .withMessage("Invalid KB article ID"),
+    ],
+    /**
+     * List of KB articles searchable for incident linking, always scoped to a
+     * category so cross-category articles are never returned.
+     */
+    listKbForIncident: [
+        objectId("id"),
+        query("search").optional().trim().isLength({ max: 140 }).withMessage("Search term is too long"),
+    ],
+};
 module.exports = {
     authValidators,
     userValidators,
@@ -555,4 +672,6 @@ module.exports = {
     knownErrorValidators,
     problemRcaValidators,
     actionItemValidators,
+    knowledgeBaseArticleValidators
 };
+
