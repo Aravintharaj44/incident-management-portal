@@ -1,10 +1,12 @@
 const express = require("express");
 
 const router = express.Router();
-
+const { ROLES } = require("../constants");
+const authorize = require("../middleware/roleCheck");
 const {
     getSurvey,
     submitSurvey,
+    getCsatStats
 } = require("../controllers/surveyController");
 
 const validate = require("../middleware/validate");
@@ -20,5 +22,5 @@ router.post(
     validate,
     submitSurvey
 );
-
+router.get("/csat",authorize(ROLES.ADMIN), getCsatStats);
 module.exports = router;

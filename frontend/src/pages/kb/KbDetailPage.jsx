@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import "../../components/editor/KbArticleContent.css";
 import {
     App,
     Button,
@@ -133,12 +134,21 @@ const KbDetailPage = () => {
                 }
             />
 
-            <Card style={{ marginBottom: 16 }}>
+            {/* <Card style={{ marginBottom: 16 }}>
                 <div
                     style={{ fontSize: 15, lineHeight: 1.8, whiteSpace: "pre-wrap" }}
                 >
                     {article.body}
                 </div>
+            </Card>
+             */}
+            <Card style={{ marginBottom: 16 }}>
+                <div
+                    className="kb-article-content"
+                    dangerouslySetInnerHTML={{
+                        __html: article.body || "",
+                    }}
+                />
             </Card>
 
             <Card size="small" style={{ marginBottom: 16 }}>
@@ -149,8 +159,8 @@ const KbDetailPage = () => {
                     <Descriptions.Item label="Categories">
                         {article.categories?.length
                             ? article.categories.map((c) => (
-                                  <Tag key={c._id}>{c.name}</Tag>
-                              ))
+                                <Tag key={c._id}>{c.name}</Tag>
+                            ))
                             : "None"}
                     </Descriptions.Item>
                     <Descriptions.Item label="Tags">

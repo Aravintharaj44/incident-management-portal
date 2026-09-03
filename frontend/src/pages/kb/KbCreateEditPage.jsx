@@ -6,7 +6,8 @@ import PageHeader from "../../components/common/PageHeader";
 import { LoadingView, ErrorView } from "../../components/common/StateViews";
 import { KBA_STATUS_OPTIONS } from "../../utils/constants";
 
-const { TextArea } = Input;
+// const { TextArea } = Input;
+import RichTextEditor from "../../components/editor/RichTextEditor";
 
 const KbCreateEditPage = () => {
     const { id } = useParams();
@@ -116,7 +117,7 @@ const KbCreateEditPage = () => {
                         <Input placeholder="How to resolve..." />
                     </Form.Item>
 
-                    <Form.Item
+                    {/* <Form.Item
                         name="body"
                         label="Body"
                         rules={[
@@ -128,8 +129,44 @@ const KbCreateEditPage = () => {
                             rows={12}
                             placeholder="Provide the full solution, workaround or known error description..."
                         />
-                    </Form.Item>
+                    </Form.Item> */}
 
+                    <Form.Item
+                        name="body"
+                        label="Body"
+                        rules={[
+                            {
+                                validator: (_, value) => {
+                                    const text =
+                                        value
+                                            ?.replace(/<[^>]*>/g, "")
+                                            .trim() || "";
+
+                                    if (!text) {
+                                        return Promise.reject(
+                                            new Error("Body is required")
+                                        );
+                                    }
+
+                                    if (text.length < 10) {
+                                        return Promise.reject(
+                                            new Error(
+                                                "Body must be at least 10 characters"
+                                            )
+                                        );
+                                    }
+
+                                    return Promise.resolve();
+                                },
+                            },
+                        ]}
+                    >
+                        <RichTextEditor
+                            placeholder="Provide the full solution, workaround or known error description..."
+                            value={formValue}
+                            onChange={updateFormValue}
+                        />
+                    </Form.Item>
                     <Form.Item
                         name="categories"
                         label="Categories"
