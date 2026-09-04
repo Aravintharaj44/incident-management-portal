@@ -521,12 +521,12 @@ const updateStatus = asyncHandler(async (req, res) => {
     }
 
     await incident.save();
-    notificationService.notifyStatusChanged({
-        incident,
-        oldStatus,
-        newStatus: status,
-        changedBy: req.user,
-    });
+    // notificationService.notifyStatusChanged({
+    //     incident,
+    //     oldStatus,
+    //     newStatus: status,
+    //     changedBy: req.user,
+    // });
     const enteredTerminalStatus =
         !TERMINAL_STATUSES.includes(oldStatus) &&
         TERMINAL_STATUSES.includes(status);

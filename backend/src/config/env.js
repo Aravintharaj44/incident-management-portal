@@ -84,6 +84,9 @@ const env = {
 
     // Set to false to stop the seed script from wiping existing collections.
     seedResetsData: toBool(process.env.SEED_RESET, true),
+
+    // FR4-29: CSAT rating below this threshold flags the incident for manager follow-up.
+    csatFollowupThreshold: toInt(process.env.CSAT_FOLLOWUP_THRESHOLD, 3),
 };
 
 env.isProduction = env.nodeEnv === "production";

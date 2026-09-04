@@ -2110,6 +2110,133 @@ endpoint and enforced by the backend regardless of the UI.
             },
 
             // ==================================================================
+            // CSAT / Surveys (FR4-26..29)
+            // ==================================================================
+            "/surveys/csat": {
+                get: {
+                    tags: ["CSAT"],
+                    summary: "CSAT statistics",
+                    description: "Admin and Agent. Returns overall average rating, response count, breakdowns by agent/department/category, and the count of incidents flagged for manager follow-up.",
+                    security: [{ bearerAuth: [] }],
+                    responses: {
+                        200: {
+                            description: "CSAT statistics.",
+                            content: {
+                                "application/json": {
+                                    schema: {
+                                        type: "object",
+                                        properties: {
+                                            success: { type: "boolean" },
+                                            message: { type: "string" },
+                                            data: {
+                                                type: "object",
+                                                properties: {
+                                                    overall: { type: "object", properties: { avgRating: { type: "number", nullable: true }, responseCount: { type: "integer" } } },
+                                                    byAgent: { type: "array", items: { type: "object", properties: { agentId: { type: "string" }, agentName: { type: "string" }, avgRating: { type: "number" }, responseCount: { type: "integer" } } } },
+                                                    byDepartment: { type: "array", items: { type: "object", properties: { departmentId: { type: "string" }, departmentName: { type: "string" }, avgRating: { type: "number" }, responseCount: { type: "integer" } } } },
+                                                    byCategory: { type: "array", items: { type: "object", properties: { categoryId: { type: "string" }, categoryName: { type: "string" }, avgRating: { type: "number" }, responseCount: { type: "integer" } } } },
+                                                    followUpCount: { type: "integer" },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not admin or agent.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/surveys/csat/trend": {
+                get: {
+                    tags: ["CSAT"],
+                    summary: "CSAT trend over time",
+                    description: "Admin and Agent. Returns daily average CSAT rating and response count for the given number of past days.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [
+                        { name: "days", in: "query", schema: { type: "integer", minimum: 1, maximum: 365, default: 30 }, description: "Number of past days to include." },
+                    ],
+                    responses: {
+                        200: {
+                            description: "CSAT trend data.",
+                            content: {
+                                "application/json": {
+                                    schema: {
+                                        type: "object",
+                                        properties: {
+                                            success: { type: "boolean" },
+                                            message: { type: "string" },
+                                            data: {
+                                                type: "object",
+                                                properties: {
+                                                    trend: {
+                                                        type: "array",
+                                                        items: {
+                                                            type: "object",
+                                                            properties: {
+                                                                date: { type: "string", format: "date", example: "2026-09-01" },
+                                                                avgRating: { type: "number", example: 4.25 },
+                                                                responseCount: { type: "integer", example: 8 },
+                                                            },
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not admin or agent.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/surveys/{token}": {
+                get: {
+                    tags: ["CSAT"],
+                    summary: "Retrieve a survey by token",
+                    description: "Public. Returns the survey incident info and status. If the survey is already completed, indicates so.",
+                    security: [],
+                    parameters: [{ name: "token", in: "path", required: true, schema: { type: "string" }, description: "Secure survey token." }],
+                    responses: {
+                        200: { description: "Survey retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { survey: { type: "object", properties: { incident: { type: "object" }, status: { type: "string" } } } } } } } } } },
+                        404: { description: "Survey not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                post: {
+                    tags: ["CSAT"],
+                    summary: "Submit a survey response",
+                    description: "Public. Submits rating (1-5) and optional comments. A survey can only be submitted once. Rating below the configurable threshold flags the incident for manager follow-up.",
+                    security: [],
+                    parameters: [{ name: "token", in: "path", required: true, schema: { type: "string" }, description: "Secure survey token." }],
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    required: ["rating"],
+                                    properties: {
+                                        rating: { type: "integer", minimum: 1, maximum: 5, description: "CSAT rating from 1 (very dissatisfied) to 5 (very satisfied)." },
+                                        comments: { type: "string", maxLength: 5000, description: "Optional free-text feedback." },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    responses: {
+                        200: { description: "Survey submitted.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { survey: { type: "object", properties: { id: { type: "string" }, rating: { type: "integer" }, comments: { type: "string" }, status: { type: "string" }, submittedAt: { type: "string", format: "date-time" } } } } } } } } } },
+                        400: { description: "Survey already submitted or invalid rating.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Survey not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
             // Meta (public helpers)
             // ==================================================================
             "/meta": {

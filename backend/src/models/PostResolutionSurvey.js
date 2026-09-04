@@ -17,6 +17,26 @@ const postResolutionSurveySchema = new mongoose.Schema(
             required: [true, "Reporter is required"],
             index: true,
         },
+         agentId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+            index: true,
+        },
+        // Team/Department responsible for the incident
+        departmentId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Department",
+            default: null,
+            index: true,
+        },
+        // Category at the time the survey was generated (FR4-27 historical attribution)
+        categoryId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Category",
+            default: null,
+            index: true,
+        },
 
         rating: {
             type: Number,
@@ -55,6 +75,13 @@ const postResolutionSurveySchema = new mongoose.Schema(
             type: Date,
             default: null,
         },
+
+        // FR4-29: flagged when rating < configurable threshold
+        requiresFollowUp: {
+            type: Boolean,
+            default: false,
+            index: true,
+        },
     },
     {
         timestamps: true,
@@ -62,6 +89,10 @@ const postResolutionSurveySchema = new mongoose.Schema(
         toObject: { virtuals: true },
     }
 );
+
+postResolutionSurveySchema.index({ status: 1, rating: 1 });
+postResolutionSurveySchema.index({ submittedAt: -1 });
+postResolutionSurveySchema.index({ requiresFollowUp: 1, status: 1 });
 
 module.exports = mongoose.model(
     "PostResolutionSurvey",

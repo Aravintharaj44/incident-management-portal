@@ -1,8 +1,11 @@
 const PostResolutionSurvey = require('../models/PostResolutionSurvey');
+const Incident = require('../models/Incident');
 const asyncHandler = require("../utils/asyncHandler");
-const {SURVEY_STATUS} = require('../constants');
+const { SURVEY_STATUS } = require('../constants');
 const ApiError = require('../utils/ApiError');
 const { successResponse } = require("../utils/apiResponse");
+const { env } = require("../config/env");
+const logger = require("../utils/logger");
 
 const submitSurvey = asyncHandler(async (req, res) => {
     const { token } = req.params;
@@ -20,12 +23,35 @@ const submitSurvey = asyncHandler(async (req, res) => {
         );
     }
 
-    survey.rating = rating;
-    survey.comments = comments || "";
+    // Defense-in-depth: validate rating even though the validator middleware
+    // already enforces this, in case the route is ever called without validation.
+    const parsedRating = Number(rating);
+    if (!Number.isInteger(parsedRating) || parsedRating < 1 || parsedRating > 5) {
+        throw ApiError.badRequest("Rating must be an integer between 1 and 5");
+    }
+
+    const threshold = env.csatFollowupThreshold;
+    const requiresFollowUp = parsedRating < threshold;
+
+    survey.rating = parsedRating;
+    survey.comments = (typeof comments === "string" ? comments.trim() : "");
     survey.status = SURVEY_STATUS.COMPLETED;
     survey.submittedAt = new Date();
+    survey.requiresFollowUp = requiresFollowUp;
 
     await survey.save();
+
+    // Propagate the follow-up flag to the incident so managers can filter for it.
+    if (requiresFollowUp) {
+        try {
+            await Incident.findByIdAndUpdate(survey.incident, {
+                requiresFollowUp: true,
+            });
+        } catch (err) {
+            // Best-effort: survey is already saved, do not fail the response.
+            logger.error(`Failed to update incident follow-up flag: ${err.message}`);
+        }
+    }
 
     return successResponse(res, 200, "Thank you for your feedback", {
         survey: {
@@ -37,6 +63,7 @@ const submitSurvey = asyncHandler(async (req, res) => {
         },
     });
 });
+
 const getSurvey = asyncHandler(async (req, res) => {
     const { token } = req.params;
 
@@ -75,17 +102,31 @@ const getCsatStats = asyncHandler(async (req, res) => {
                 from: "incidents",
                 localField: "incident",
                 foreignField: "_id",
-                as: "incident",
+                as: "incidentDoc",
             },
         },
-        { $unwind: "$incident" },
+        { $unwind: "$incidentDoc" },
+        {
+            // Add resolved snapshot fields with fallback to live incident values.
+            $addFields: {
+                resolvedAgentId: {
+                    $ifNull: ["$agentId", "$incidentDoc.assignedTo"],
+                },
+                resolvedDepartmentId: {
+                    $ifNull: ["$departmentId", "$incidentDoc.department"],
+                },
+                resolvedCategoryId: {
+                    $ifNull: ["$categoryId", "$incidentDoc.category"],
+                },
+            },
+        },
         {
             $facet: {
                 byAgent: [
-                    { $match: { "incident.assignedTo": { $ne: null } } },
+                    { $match: { resolvedAgentId: { $ne: null } } },
                     {
                         $group: {
-                            _id: "$incident.assignedTo",
+                            _id: "$resolvedAgentId",
                             avgRating: { $avg: "$rating" },
                             responseCount: { $sum: 1 },
                         },
@@ -111,10 +152,10 @@ const getCsatStats = asyncHandler(async (req, res) => {
                     { $sort: { avgRating: -1 } },
                 ],
                 byDepartment: [
-                    { $match: { "incident.department": { $ne: null } } },
+                    { $match: { resolvedDepartmentId: { $ne: null } } },
                     {
                         $group: {
-                            _id: "$incident.department",
+                            _id: "$resolvedDepartmentId",
                             avgRating: { $avg: "$rating" },
                             responseCount: { $sum: 1 },
                         },
@@ -140,9 +181,10 @@ const getCsatStats = asyncHandler(async (req, res) => {
                     { $sort: { avgRating: -1 } },
                 ],
                 byCategory: [
+                    { $match: { resolvedCategoryId: { $ne: null } } },
                     {
                         $group: {
-                            _id: "$incident.category",
+                            _id: "$resolvedCategoryId",
                             avgRating: { $avg: "$rating" },
                             responseCount: { $sum: 1 },
                         },
@@ -177,15 +219,61 @@ const getCsatStats = asyncHandler(async (req, res) => {
                     },
                     { $project: { _id: 0, avgRating: { $round: ["$avgRating", 2] }, responseCount: 1 } },
                 ],
+                followUpCount: [
+                    { $match: { requiresFollowUp: true } },
+                    { $count: "count" },
+                ],
             },
         },
     ]);
+
+    const followUpDoc = stats[0].followUpCount[0];
 
     return successResponse(res, 200, "CSAT stats retrieved", {
         overall: stats[0].overall[0] || { avgRating: null, responseCount: 0 },
         byAgent: stats[0].byAgent,
         byDepartment: stats[0].byDepartment,
         byCategory: stats[0].byCategory,
+        followUpCount: followUpDoc ? followUpDoc.count : 0,
+    });
+});
+
+const getCsatTrend = asyncHandler(async (req, res) => {
+    const days = parseInt(req.query.days, 10) || 30;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+
+    const trend = await PostResolutionSurvey.aggregate([
+        {
+            $match: {
+                status: SURVEY_STATUS.COMPLETED,
+                rating: { $ne: null },
+                submittedAt: { $gte: startDate },
+            },
+        },
+        {
+            $group: {
+                _id: {
+                    $dateToString: { format: "%Y-%m-%d", date: "$submittedAt" },
+                },
+                avgRating: { $avg: "$rating" },
+                responseCount: { $sum: 1 },
+            },
+        },
+        {
+            $project: {
+                _id: 0,
+                date: "$_id",
+                avgRating: { $round: ["$avgRating", 2] },
+                responseCount: 1,
+            },
+        },
+        { $sort: { date: 1 } },
+    ]);
+
+    return successResponse(res, 200, "CSAT trend retrieved", {
+        trend,
     });
 });
 
@@ -193,4 +281,5 @@ module.exports = {
     submitSurvey,
     getSurvey,
     getCsatStats,
+    getCsatTrend,
 };

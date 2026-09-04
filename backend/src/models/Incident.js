@@ -138,6 +138,9 @@ const incidentSchema = new mongoose.Schema(
 
         // A major incident is inferred from its Child-Of links; this flag is a display override.
         isMajorIncident: { type: Boolean, default: false, index: true },
+
+        // FR4-29: set when a CSAT response is below the configurable threshold.
+        requiresFollowUp: { type: Boolean, default: false, index: true },
     },
     {
         timestamps: true,
