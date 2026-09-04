@@ -4,10 +4,6 @@ const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const { successResponse } = require("../utils/apiResponse");
 
-/**
- * POST /api/v1/on-call/roster (FR4-21)
- * Create an on-call schedule with shift times and escalation levels.
- */
 const createRoster = asyncHandler(async (req, res) => {
     const { department, category, startTime, endTime, ackWindowMinutes, escalationChain } = req.body;
 
@@ -32,10 +28,6 @@ const createRoster = asyncHandler(async (req, res) => {
     return successResponse(res, 201, "On-call roster configured successfully", { schedule: populated });
 });
 
-/**
- * POST /api/v1/on-call/incidents/:id/acknowledge (FR4-23)
- * On-call responder acknowledges the incident to stop escalations.
- */
 const acknowledgeIncident = async (req, res) => {
     try {
         const { id } = req.params;
@@ -45,13 +37,19 @@ const acknowledgeIncident = async (req, res) => {
             {
                 acknowledgedAt: new Date(),
                 acknowledgedBy: req.user._id,
-                isAcknowledged: true // ensure boolean flag is set if you use one
+                isAcknowledged: true
             },
             { new: true }
         );
 
         if (!incident) {
             return res.status(404).json({ message: "Incident not found" });
+        }
+
+        if (!incident.acknowledgedAt) {
+            return res.status(500).json({
+                message: "Acknowledge did not persist — check that acknowledgedAt/acknowledgedBy/isAcknowledged exist on the Incident schema."
+            });
         }
 
         return res.status(200).json({
@@ -64,17 +62,12 @@ const acknowledgeIncident = async (req, res) => {
     }
 };
 
-/**
- * GET /api/v1/on-call/calendar (FR4-25)
- * Returns calendar schedules across departments overlapping with the date range.
- */
 const getCalendarView = asyncHandler(async (req, res) => {
     const { department, start, end } = req.query;
     const query = { isActive: true };
 
     if (department) query.department = department;
 
-    // Fixed overlapping shift query logic
     if (start && end) {
         query.startTime = { $lte: new Date(end) };
         query.endTime = { $gte: new Date(start) };
@@ -95,9 +88,3 @@ module.exports = {
     acknowledgeIncident,
     getCalendarView,
 };
-
-
-
-
-
-

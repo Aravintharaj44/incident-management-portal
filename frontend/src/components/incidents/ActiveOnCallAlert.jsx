@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, Button, Tag, Flex, Typography, Statistic, message } from "antd";
 import { AlertOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import { acknowledgeOnCallIncident } from "../../api/onCallApi";
@@ -9,12 +9,25 @@ const ActiveOnCallAlert = ({ incident, onAcknowledgeSuccess }) => {
     const [loading, setLoading] = useState(false);
     const [isAcked, setIsAcked] = useState(!!incident?.acknowledgedAt);
 
-    // Hide if acknowledged, closed, or no incident provided
-    if (!incident || incident.status === "Closed" || incident.acknowledgedAt || isAcked) {
+    // Sync state whenever incident prop updates from parent re-fetch
+    useEffect(() => {
+        setIsAcked(!!incident?.acknowledgedAt || !!incident?.isAcknowledged);
+    }, [incident]);
+
+    // Hide component if incident is missing, closed, or acknowledged
+    if (
+        !incident ||
+        incident.status === "Closed" ||
+        incident.acknowledgedAt ||
+        incident.isAcknowledged ||
+        isAcked
+    ) {
         return null;
     }
 
-    const ackDeadline = new Date(incident.updatedAt || incident.createdAt).getTime() + (incident.ackWindowMinutes || 15) * 60 * 1000;
+    const ackDeadline =
+        new Date(incident.lastEscalatedAt || incident.createdAt).getTime() +
+        (incident.ackWindowMinutes || 15) * 60 * 1000;
     const isPastDeadline = Date.now() >= ackDeadline;
 
     const handleAcknowledge = async () => {
@@ -49,7 +62,7 @@ const ActiveOnCallAlert = ({ incident, onAcknowledgeSuccess }) => {
                         <Text type="secondary" style={{ display: "block" }}>
                             Department: <b>{incident.department?.title || incident.department?.name || "Support"}</b>
                         </Text>
-                        <Text type="secondary">Source: <Tag>{incident.source || "Manual"}</Tag></Text>
+                        <Text type="secondary">Source: <Tag>{incident.intakeSource || incident.source || "Manual"}</Tag></Text>
                     </div>
 
                     <div style={{ textAlign: "right" }}>

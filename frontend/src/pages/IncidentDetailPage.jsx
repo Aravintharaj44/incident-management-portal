@@ -79,7 +79,6 @@ const IncidentDetailPage = () => {
     const [resolutionNote, setResolutionNote] = useState("");
     const [updateLinkedChildren, setUpdateLinkedChildren] = useState(false);
 
-    // FR4-04: link this incident to a Problem.
     const [problems, setProblems] = useState([]);
     const [problemOpen, setProblemOpen] = useState(false);
     const [selectedProblem, setSelectedProblem] = useState(null);
@@ -90,7 +89,9 @@ const IncidentDetailPage = () => {
 
         try {
             const response = await incidentApi.get(id);
-            setPayload(response.data);
+            // Safely extract API response payload data
+            const payloadData = response.data?.data || response.data;
+            setPayload(payloadData);
         } catch (err) {
             setError(err);
         } finally {
@@ -102,7 +103,6 @@ const IncidentDetailPage = () => {
         load();
     }, [load]);
 
-    // Reference data only staff can act on.
     const loadReferenceData = useCallback(async () => {
         if (!isStaff) return;
 
@@ -129,7 +129,6 @@ const IncidentDetailPage = () => {
 
     const { incident, comments, activity, attachments, permissions, correlation, rca, problem, rcaSource } = payload;
 
-    /** Wraps an action so every one gets the same loading/refresh/error handling. */
     const runAction = async (action, successMessage) => {
         setActing(true);
 
@@ -147,7 +146,6 @@ const IncidentDetailPage = () => {
     };
 
     const handleStatusChange = async (nextStatus) => {
-        // Resolving asks for a note, so it takes the modal path instead.
         if (nextStatus === STATUS.RESOLVED) {
             setResolveOpen(true);
             return;
@@ -239,11 +237,11 @@ const IncidentDetailPage = () => {
             return;
         }
 
-        const payload = isAdmin
+        const payloadData = isAdmin
             ? { department: incident.department?._id || null, assignedTo: assignedTo || null }
             : { assignedTo: assignedTo || null };
         return runAction(
-            () => incidentApi.assign(id, payload),
+            () => incidentApi.assign(id, payloadData),
             assignedTo ? "Incident assigned" : "Incident returned to the queue"
         );
     };
@@ -337,7 +335,6 @@ const IncidentDetailPage = () => {
                 ].filter(Boolean)}
             />
 
-            {/* FIXED: Changed `message` to `title` to prevent Ant Design v5 deprecation warning */}
             {incident.isOverdue && (
                 <Alert
                     type="error"
@@ -357,7 +354,6 @@ const IncidentDetailPage = () => {
             <AcknowledgePanel incident={incident} onRefresh={load} />
 
             <Row gutter={[16, 16]}>
-                {/* --- Main column --------------------------------------- */}
                 <Col xs={24} lg={16}>
                     <Card title="Description">
                         <Paragraph style={{ whiteSpace: "pre-wrap", marginBottom: 0 }}>
@@ -459,7 +455,6 @@ const IncidentDetailPage = () => {
                     </Card>
                 </Col>
 
-                {/* --- Side column: details and actions ------------------- */}
                 <Col xs={24} lg={8}>
                     <Card title="Details" size="small">
                         <Descriptions column={1} size="small" bordered>
@@ -509,7 +504,6 @@ const IncidentDetailPage = () => {
                         </Descriptions>
                     </Card>
 
-                    {/* Related problem (FR4-04) */}
                     <Card
                         title={
                             <Space size={6}>
@@ -566,7 +560,6 @@ const IncidentDetailPage = () => {
                         )}
                     </Card>
 
-                    {/* Assignment (FR-05) */}
                     {permissions.canAssign && (
                         <Card
                             title={
@@ -600,7 +593,6 @@ const IncidentDetailPage = () => {
                         </Card>
                     )}
 
-                    {/* Status workflow (FR-06) */}
                     {permissions.canChangeStatus && (
                         <Card title="Move this incident" size="small" style={{ marginTop: 16 }}>
                             <Space direction="vertical" size={8} style={{ width: "100%" }}>
@@ -644,7 +636,6 @@ const IncidentDetailPage = () => {
                 </Col>
             </Row>
 
-            {/* --- Link to a problem (FR4-04) ------------------------ */}
             <Modal
                 title="Link to a problem"
                 open={problemOpen}
@@ -675,7 +666,6 @@ const IncidentDetailPage = () => {
                 />
             </Modal>
 
-            {/* --- Edit modal ------------------------------------------- */}
             <Modal
                 title="Edit incident"
                 open={editOpen}
@@ -732,7 +722,6 @@ const IncidentDetailPage = () => {
                 </Form>
             </Modal>
 
-            {/* --- Resolve modal ---------------------------------------- */}
             <Modal
                 title="Resolve this incident"
                 open={resolveOpen}

@@ -14,7 +14,6 @@ const {
 
 const incidentSchema = new mongoose.Schema(
     {
-        // Human-readable reference shown in the UI and in emails.
         incidentNumber: {
             type: String,
             unique: true,
@@ -51,9 +50,6 @@ const incidentSchema = new mongoose.Schema(
             index: true,
         },
 
-        // Numeric mirror of `priority` so the list screen can sort by severity.
-        // Sorting on the enum string alone would order it alphabetically
-        // (critical, high, low, medium) rather than by how urgent it is.
         priorityWeight: {
             type: Number,
             default: 2,
@@ -86,7 +82,6 @@ const incidentSchema = new mongoose.Schema(
             index: true,
         },
 
-        // Set during triage; only active members can receive incidents for it.
         department: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Department",
@@ -94,7 +89,6 @@ const incidentSchema = new mongoose.Schema(
             index: true,
         },
 
-        // Derived from priority via the SLA table; recomputed when priority changes.
         dueBy: {
             type: Date,
             default: null,
@@ -108,8 +102,34 @@ const incidentSchema = new mongoose.Schema(
         resolvedAt: { type: Date, default: null },
         closedAt: { type: Date, default: null },
 
-        // Optional reference to the Problem this incident belongs to (FR4-04).
-        // Nullable so existing incidents continue to work untouched.
+        // On-call acknowledgement & escalation tracking (FR4-23/FR4-24)
+        acknowledgedAt: {
+            type: Date,
+            default: null,
+            index: true,
+        },
+        acknowledgedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+        },
+        isAcknowledged: {
+            type: Boolean,
+            default: false,
+        },
+        escalationLevel: {
+            type: Number,
+            default: 1,
+        },
+        lastEscalatedAt: {
+            type: Date,
+            default: null,
+        },
+        ackWindowMinutes: {
+            type: Number,
+            default: 15,
+        },
+
         problemId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Problem",
@@ -117,7 +137,6 @@ const incidentSchema = new mongoose.Schema(
             index: true,
         },
 
-        // Free-text resolution note captured when moving to Resolved.
         resolutionNote: {
             type: String,
             trim: true,
@@ -128,9 +147,8 @@ const incidentSchema = new mongoose.Schema(
         commentCount: { type: Number, default: 0 },
         attachmentCount: { type: Number, default: 0 },
 
-        // A major incident is inferred from its Child-Of links; this flag is a display override.
         isMajorIncident: { type: Boolean, default: false, index: true },
-                // --- FR4-19 Source Tagging / FR4-18 Deduplication (Section 12) ---
+
         intakeSource: {
             type: String,
             enum: ['Manual', 'Email', 'Webhook'],
@@ -150,24 +168,17 @@ const incidentSchema = new mongoose.Schema(
     }
 );
 
-/**
- * Compound indexes matching the list screen's most common query shapes
- * (status + priority filters, and "my queue" sorted newest first), so the
- * 2-second page-load target holds as the collection grows.
- */
 incidentSchema.index({ status: 1, priority: 1, createdAt: -1 });
 incidentSchema.index({ assignedTo: 1, status: 1, createdAt: -1 });
 incidentSchema.index({ assignedDepartment: 1, status: 1, createdAt: -1 });
 incidentSchema.index({ reportedBy: 1, createdAt: -1 });
 
-/** True when an unresolved incident has passed its SLA target (FR-14). */
 incidentSchema.virtual("isOverdue").get(function isOverdue() {
     if (!this.dueBy) return false;
     if (TERMINAL_STATUSES.includes(this.status)) return false;
     return this.dueBy.getTime() < Date.now();
 });
 
-/** Whole hours remaining against the SLA; negative once breached. */
 incidentSchema.virtual("hoursToDue").get(function hoursToDue() {
     if (!this.dueBy) return null;
     return Math.round((this.dueBy.getTime() - Date.now()) / 36e5);
@@ -179,7 +190,6 @@ incidentSchema.virtual("attachments", {
     foreignField: "incident",
 });
 
-/** Computes the SLA deadline for a priority, measured from `from`. */
 incidentSchema.statics.calculateDueBy = function calculateDueBy(
     priority,
     from = new Date()
@@ -204,8 +214,6 @@ incidentSchema.pre("save", async function assignNumberAndDueDate() {
             this.dueBy = this.constructor.calculateDueBy(this.priority, this.createdAt);
         }
     } else if (this.isModified("priority")) {
-        // Re-baseline the SLA from when the incident was raised, not from now,
-        // so re-prioritising cannot be used to hide an already-breached SLA.
         this.dueBy = this.constructor.calculateDueBy(this.priority, this.createdAt);
     }
 });

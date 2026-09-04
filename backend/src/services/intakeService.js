@@ -136,14 +136,24 @@ async function ingestAlert(input) {
 
 /**
  * FR4-20 — Intake Failure Log
+ * Explicitly assigns 'flagged' status so records display on the default UI filter
  */
-async function logFailure({ source, vendor = null, errorReason, rawPayload }) {
-  return IntakeLog.create({
-    source,
-    vendor,
-    errorReason: String(errorReason).slice(0, 1000),
-    rawPayload,
-  });
+/**
+ * FR4-20 — Intake Failure Log
+ */
+async function logFailure({ source, vendor = null, errorReason, rawPayload, status = 'Failed' }) {
+  try {
+    return await IntakeLog.create({
+      source: source || INTAKE_SOURCE.WEBHOOK,
+      vendor: vendor || 'generic',
+      errorReason: String(errorReason || 'Unknown error').slice(0, 1000),
+      rawPayload: typeof rawPayload === 'object' ? rawPayload : { data: rawPayload },
+      status: status, // Matches capitalized enum ['Failed', 'Reviewed', 'Resolved']
+    });
+  } catch (err) {
+    console.error('[intakeService] Error logging intake failure to MongoDB:', err);
+    throw err;
+  }
 }
 
 module.exports = {

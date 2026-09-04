@@ -10,10 +10,12 @@ import { formatDateTime } from "../../utils/format";
 const { Text } = Typography;
 
 const STATUS_OPTIONS = [
-    { value: "", label: "All" },
-    { value: "Flagged", label: "Failed / Flagged (needs review)" },
+    { value: "", label: "All Statuses" },
+    { value: "Failed", label: "Failed" },
+    { value: "Flagged", label: "Flagged" },
     { value: "Reviewed", label: "Reviewed" },
     { value: "Resolved", label: "Resolved" },
+    { value: "Dismissed", label: "Dismissed" },
 ];
 
 /**
@@ -24,7 +26,7 @@ const IntakeFailuresPage = () => {
     const { message } = App.useApp();
 
     const [logs, setLogs] = useState([]);
-    const [status, setStatus] = useState("Flagged");
+    const [status, setStatus] = useState("");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [actingId, setActingId] = useState(null);
@@ -36,10 +38,28 @@ const IntakeFailuresPage = () => {
         try {
             const response = await intakeApi.list({ status: status || undefined, limit: 50 });
             
-            // Safely extract items from backend paginated envelope: response.data.data.items
-            const items = response?.data?.data?.items || response?.data?.items || [];
+            // Log response to DevTools console for easy inspection
+            console.log("Intake API Response:", response);
+
+            // Handle multiple potential envelope patterns returned by Axios/API handlers
+            let items = [];
+            if (Array.isArray(response)) {
+                items = response;
+            } else if (Array.isArray(response?.data)) {
+                items = response.data;
+            } else if (Array.isArray(response?.items)) {
+                items = response.items;
+            } else if (Array.isArray(response?.data?.items)) {
+                items = response.data.items;
+            } else if (Array.isArray(response?.data?.data?.items)) {
+                items = response.data.data.items;
+            } else if (Array.isArray(response?.data?.data)) {
+                items = response.data.data;
+            }
+
             setLogs(items);
         } catch (err) {
+            console.error("Failed to fetch intake failures:", err);
             setError(err);
         } finally {
             setLoading(false);
@@ -108,7 +128,13 @@ const IntakeFailuresPage = () => {
             title: "Status",
             dataIndex: "status",
             width: 110,
-            render: (value) => <Tag>{value}</Tag>,
+            render: (value) => {
+                let color = "default";
+                if (value === "Failed" || value === "Flagged") color = "error";
+                if (value === "Resolved") color = "success";
+                if (value === "Dismissed") color = "warning";
+                return <Tag color={color}>{value}</Tag>;
+            },
         },
         {
             title: "Actions",
