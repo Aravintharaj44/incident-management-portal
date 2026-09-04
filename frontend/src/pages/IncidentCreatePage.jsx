@@ -34,11 +34,6 @@ const SLA_HINTS = {
 
 /**
  * Raise a new incident (FR-03).
- *
- * The incident is created first and any files are attached afterwards, because
- * an attachment needs an incident id to belong to. If the upload step fails the
- * incident still exists - so the user is told what happened and sent to the
- * detail page to retry, rather than losing everything they typed.
  */
 const IncidentCreatePage = () => {
     const [form] = Form.useForm();
@@ -56,7 +51,7 @@ const IncidentCreatePage = () => {
     useEffect(() => {
         categoryApi
             .list()
-            .then((response) => setCategories(response.data.categories))
+            .then((response) => setCategories(response.data.categories || response.data))
             .catch((err) => setError(err.message))
             .finally(() => setLoadingCategories(false));
     }, []);
@@ -67,23 +62,27 @@ const IncidentCreatePage = () => {
 
         try {
             const response = await incidentApi.create(values);
-            const created = response.data.incident;
+            
+            // SAFELY UNPACK RESPONSE (Handles both response.data.data and response.data.incident)
+            const created = response.data?.data || response.data?.incident || response.data;
+
+            if (!created || !created._id) {
+                throw new Error("Invalid incident data received from server");
+            }
 
             if (files.length) {
                 try {
                     await attachmentApi.upload(created._id, files);
                 } catch (uploadError) {
-                    // The incident was created - do not pretend the whole thing
-                    // failed, just be honest about which half did.
                     message.warning(
-                        `${created.incidentNumber} was created, but the attachments failed: ${uploadError.message}`
+                        `${created.incidentNumber || 'Incident'} was created, but the attachments failed: ${uploadError.message}`
                     );
                     navigate(`/incidents/${created._id}`);
                     return;
                 }
             }
 
-            message.success(`${created.incidentNumber} has been logged`);
+            message.success(`${created.incidentNumber || 'Incident'} has been logged`);
             navigate(`/incidents/${created._id}`);
         } catch (err) {
             if (err.errors?.length) {
@@ -91,7 +90,7 @@ const IncidentCreatePage = () => {
                     err.errors.map((item) => ({ name: item.field, errors: [item.message] }))
                 );
             }
-            setError(err.message);
+            setError(err.message || "Failed to create incident");
         } finally {
             setSubmitting(false);
         }
@@ -108,7 +107,7 @@ const IncidentCreatePage = () => {
             {error && (
                 <Alert
                     type="error"
-                    message={error}
+                    title={error}
                     showIcon
                     closable
                     onClose={() => setError(null)}
@@ -214,8 +213,6 @@ const IncidentCreatePage = () => {
                             <Form.Item label="Attachments (optional)">
                                 <Dragger
                                     multiple
-                                    // Held in state and uploaded after the incident
-                                    // exists, since attachments need an incident id.
                                     beforeUpload={(file) => {
                                         if (file.size / 1024 / 1024 >= 5) {
                                             message.error(`"${file.name}" is larger than 5 MB`);
@@ -262,7 +259,7 @@ const IncidentCreatePage = () => {
 
                 <Col xs={24} lg={8}>
                     <Card title="Choosing a priority" size="small">
-                        <Space orientation="vertical" size={14} style={{ width: "100%" }}>
+                        <Space direction="vertical" size={14} style={{ width: "100%" }}>
                             <div>
                                 <PriorityTag priority={PRIORITY.CRITICAL} />
                                 <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 6 }}>

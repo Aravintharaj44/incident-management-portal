@@ -12,3 +12,4 @@ export { metaApi } from "./meta";
 export { problemApi } from "./problems";
 export { knownErrorApi } from "./problems";
 export { default as client } from "./client";
+export { intakeApi } from "./intake";

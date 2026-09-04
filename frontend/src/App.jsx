@@ -8,6 +8,7 @@ import ErrorBoundary from "./components/common/ErrorBoundary";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import { ROLES } from "./utils/constants";
+import IntakeFailuresPage from './pages/admin/IntakeFailuresPage';
 
 /**
  * Route table for the whole app.
@@ -37,6 +38,7 @@ const CategoriesPage = lazy(() => import("./pages/admin/CategoriesPage"));
 const DepartmentsPage = lazy(() => import("./pages/admin/DepartmentsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const ForbiddenPage = lazy(() => import("./pages/ForbiddenPage"));
+const OnCallPage = lazy(() => import("./pages/admin/OnCallPage"));
 
 const RouteFallback = () => (
     <div style={{ display: "grid", placeItems: "center", minHeight: 320 }}>
@@ -71,6 +73,7 @@ const App = () => (
                             element={<RoleRoute allowedRoles={[ROLES.ADMIN, ROLES.AGENT]} />}
                         >
                             <Route path="/my-queue" element={<MyQueuePage />} />
+                            <Route path="/on-call" element={<OnCallPage />} />
 
                             {/* V4 - Problem Management (FR4-01..06) */}
                             <Route path="/problems" element={<ProblemsPage />} />
@@ -84,6 +87,7 @@ const App = () => (
                             <Route path="/admin/users" element={<UsersPage />} />
                             <Route path="/admin/categories" element={<CategoriesPage />} />
                             <Route path="/admin/departments" element={<DepartmentsPage />} />
+                            <Route path="/admin/intake-failures" element={<IntakeFailuresPage />} />
                         </Route>
 
                         <Route path="*" element={<NotFoundPage />} />

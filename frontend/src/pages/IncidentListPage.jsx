@@ -14,7 +14,7 @@ import { PriorityTag, SlaTag, StatusTag } from "../components/common/Tags";
 import UserBadge from "../components/common/UserBadge";
 import { ErrorView } from "../components/common/StateViews";
 import { formatDateTime, fromNow, truncate } from "../utils/format";
-
+import SourceTag from "../components/incidents/SourceTag";  
 const { Text } = Typography;
 
 /** Filters that are lists in the API and arrays in component state. */
@@ -202,6 +202,13 @@ const IncidentListPage = ({ fixedFilters = EMPTY_FIXED_FILTERS, pageTitle = "Inc
             width: 140,
             sorter: true,
             render: (status) => <StatusTag status={status} />,
+        },
+          {
+            title: "Source",
+            dataIndex: "intakeSource",
+            width: 110,
+            responsive: ["lg"],
+            render: (source) => <SourceTag source={source} />,
         },
         {
             title: "SLA",

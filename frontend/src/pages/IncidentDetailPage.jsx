@@ -9,6 +9,7 @@ import {
     Col,
     Descriptions,
     Divider,
+    Flex,
     Form,
     Input,
     Modal,
@@ -50,6 +51,9 @@ import {
     TERMINAL_STATUSES,
 } from "../utils/constants";
 import { formatDateTime, formatDueBy, fromNow } from "../utils/format";
+import SourceTag from "../components/incidents/SourceTag";
+import AcknowledgePanel from "../components/incidents/AcknowledgePanel";
+import ActiveOnCallAlert from "../components/incidents/ActiveOnCallAlert";
 
 const { Paragraph, Text } = Typography;
 const { TextArea } = Input;
@@ -95,10 +99,6 @@ const IncidentDetailPage = () => {
     }, [id]);
 
     useEffect(() => {
-        // The state updates here happen after an await, so this is not the
-        // synchronous cascade the rule guards against - it cannot see past
-        // the async boundary.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         load();
     }, [load]);
 
@@ -120,10 +120,6 @@ const IncidentDetailPage = () => {
     }, [id, isStaff]);
 
     useEffect(() => {
-        // The state updates here happen after an await, so this is not the
-        // synchronous cascade the rule guards against - it cannot see past
-        // the async boundary.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         loadReferenceData();
     }, [loadReferenceData]);
 
@@ -166,8 +162,6 @@ const IncidentDetailPage = () => {
                 `Status changed to ${STATUS_LABELS[nextStatus]}`
             );
 
-        // Closing and reopening are the two that are awkward to undo, so both
-        // ask for confirmation first.
         if (nextStatus === STATUS.CLOSED || isReopen) {
             modal.confirm({
                 title: isReopen ? "Reopen this incident?" : "Close this incident?",
@@ -233,7 +227,7 @@ const IncidentDetailPage = () => {
         });
     };
 
-const handleDepartmentChange = (department) =>
+    const handleDepartmentChange = (department) =>
         runAction(
             () => incidentApi.assign(id, { department: department || null }),
             department ? "Department selected; choose a department member" : "Department cleared"
@@ -244,8 +238,7 @@ const handleDepartmentChange = (department) =>
             message.error("Select a department before assigning an agent");
             return;
         }
-        // Only an Admin decides the department; a Support Agent sends just the
-        // member so the API never sees a department id they could tamper with.
+
         const payload = isAdmin
             ? { department: incident.department?._id || null, assignedTo: assignedTo || null }
             : { assignedTo: assignedTo || null };
@@ -254,6 +247,7 @@ const handleDepartmentChange = (department) =>
             assignedTo ? "Incident assigned" : "Incident returned to the queue"
         );
     };
+
     const handleEdit = async (values) => {
         const done = await runAction(
             () => incidentApi.update(id, values),
@@ -261,8 +255,7 @@ const handleDepartmentChange = (department) =>
         );
         if (done) {
             setEditOpen(false);
-            // A new category can change which departments are valid, so refresh
-            // the reference data the assignment dropdowns come from.
+            editForm.resetFields();
             loadReferenceData();
         }
     };
@@ -296,7 +289,6 @@ const handleDepartmentChange = (department) =>
         setEditOpen(true);
     };
 
-    // Only the transitions the server would accept are offered.
     const allowedTransitions = STATUS_TRANSITIONS[incident.status] || [];
 
     return (
@@ -318,6 +310,7 @@ const handleDepartmentChange = (department) =>
                         <StatusTag status={incident.status} />
                         <PriorityTag priority={incident.priority} />
                         <SlaTag incident={incident} />
+                        <SourceTag source={incident.intakeSource} />
                     </Space>
                 }
                 extra={[
@@ -344,16 +337,24 @@ const handleDepartmentChange = (department) =>
                 ].filter(Boolean)}
             />
 
+            {/* FIXED: Changed `message` to `title` to prevent Ant Design v5 deprecation warning */}
             {incident.isOverdue && (
                 <Alert
                     type="error"
                     showIcon
                     icon={<ClockCircleOutlined />}
-                    message="This incident has breached its SLA target"
+                    title="This incident has breached its SLA target"
                     description={`Target resolution was ${formatDateTime(incident.dueBy)} (${formatDueBy(incident.dueBy, true)}).`}
                     style={{ marginBottom: 16 }}
                 />
             )}
+
+            {/* --- On-Call & Escalation Controls --- */}
+            <ActiveOnCallAlert 
+                incident={incident} 
+                onAcknowledgeSuccess={load} 
+            />
+            <AcknowledgePanel incident={incident} onRefresh={load} />
 
             <Row gutter={[16, 16]}>
                 {/* --- Main column --------------------------------------- */}
@@ -474,6 +475,9 @@ const handleDepartmentChange = (department) =>
                             <Descriptions.Item label="Category">
                                 {incident.category?.name || "-"}
                             </Descriptions.Item>
+                            <Descriptions.Item label="Source">
+                                <SourceTag source={incident.intakeSource} />
+                            </Descriptions.Item>
                             <Descriptions.Item label="Reported by">
                                 <UserBadge user={incident.reportedBy} />
                             </Descriptions.Item>
@@ -487,7 +491,7 @@ const handleDepartmentChange = (department) =>
                                 {formatDateTime(incident.createdAt)}
                             </Descriptions.Item>
                             <Descriptions.Item label="SLA target">
-                                <Space orientation="vertical" size={2}>
+                                <Space direction="vertical" size={2}>
                                     <span>{formatDateTime(incident.dueBy)}</span>
                                     <SlaTag incident={incident} />
                                 </Space>
@@ -522,7 +526,7 @@ const handleDepartmentChange = (department) =>
                                     <Alert
                                         type={problem.status === "known_error" ? "warning" : "info"}
                                         showIcon
-                                        message={problem.title}
+                                        title={problem.title}
                                         description={
                                             <Space direction="vertical" size={4}>
                                                 <Space size={6}>
@@ -574,7 +578,7 @@ const handleDepartmentChange = (department) =>
                             size="small"
                             style={{ marginTop: 16 }}
                         >
-<Space orientation="vertical" size={10} style={{ width: "100%" }}>
+                            <Space direction="vertical" size={10} style={{ width: "100%" }}>
                                 <Text type="secondary" style={{ fontSize: 12 }}>Department</Text>
                                 {isAdmin ? (
                                     <Select style={{ width: "100%" }} placeholder="Select department for this category" allowClear showSearch optionFilterProp="label" loading={acting} value={incident.department?._id} onChange={handleDepartmentChange} options={assignmentOptions.map((department) => ({ value: department._id, label: department.title }))} />
@@ -587,7 +591,7 @@ const handleDepartmentChange = (department) =>
                                 ) : incident.department ? (
                                     <Select style={{ width: "100%" }} placeholder="Assign to a department member" allowClear showSearch optionFilterProp="label" loading={acting} value={incident.assignedTo?._id} onChange={handleAssign} options={(assignmentOptions.find((department) => department._id === incident.department?._id)?.members || []).map((agent) => ({ value: agent._id, label: `${agent.name} (${agent.role === "admin" ? "Admin" : "Agent"})` }))} />
                                 ) : (
-                                    <Alert type="info" showIcon message="Admin must assign a department before a member can be assigned." />
+                                    <Alert type="info" showIcon title="Admin must assign a department before a member can be assigned." />
                                 )}
                             </Space>
                             <Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 8 }}>
@@ -599,7 +603,7 @@ const handleDepartmentChange = (department) =>
                     {/* Status workflow (FR-06) */}
                     {permissions.canChangeStatus && (
                         <Card title="Move this incident" size="small" style={{ marginTop: 16 }}>
-                            <Space orientation="vertical" size={8} style={{ width: "100%" }}>
+                            <Space direction="vertical" size={8} style={{ width: "100%" }}>
                                 {allowedTransitions.map((status) => {
                                     const isReopen =
                                         TERMINAL_STATUSES.includes(incident.status) &&
@@ -633,7 +637,7 @@ const handleDepartmentChange = (department) =>
                             style={{ marginTop: 16 }}
                             type="info"
                             showIcon
-                            message="You have read and comment access"
+                            title="You have read and comment access"
                             description="Status changes and assignment are handled by the support team."
                         />
                     )}
@@ -675,7 +679,10 @@ const handleDepartmentChange = (department) =>
             <Modal
                 title="Edit incident"
                 open={editOpen}
-                onCancel={() => setEditOpen(false)}
+                onCancel={() => {
+                    setEditOpen(false);
+                    editForm.resetFields();
+                }}
                 onOk={() => editForm.submit()}
                 confirmLoading={acting}
                 okText="Save changes"
@@ -713,7 +720,6 @@ const handleDepartmentChange = (department) =>
                         />
                     </Form.Item>
 
-                    {/* Re-prioritising moves the SLA deadline, so it is staff-only. */}
                     {isStaff && (
                         <Form.Item
                             name="priority"
@@ -730,7 +736,11 @@ const handleDepartmentChange = (department) =>
             <Modal
                 title="Resolve this incident"
                 open={resolveOpen}
-                onCancel={() => setResolveOpen(false)}
+                onCancel={() => {
+                    setResolveOpen(false);
+                    setResolutionNote("");
+                    setUpdateLinkedChildren(false);
+                }}
                 onOk={handleResolve}
                 confirmLoading={acting}
                 okText="Mark as resolved"
@@ -744,11 +754,17 @@ const handleDepartmentChange = (department) =>
                         type="warning"
                         showIcon
                         style={{ marginTop: 12 }}
-                        message={`This major incident has ${correlation.childCount} linked child incident${correlation.childCount === 1 ? "" : "s"}.`}
-                        description={<Checkbox checked={updateLinkedChildren} onChange={(event) => setUpdateLinkedChildren(event.target.checked)}>Also resolve open child incidents</Checkbox>}
+                        title={`This major incident has ${correlation.childCount} linked child incident${correlation.childCount === 1 ? "" : "s"}.`}
+                        description={
+                            <Checkbox 
+                                checked={updateLinkedChildren} 
+                                onChange={(event) => setUpdateLinkedChildren(event.target.checked)}
+                            >
+                                Also resolve open child incidents
+                            </Checkbox>
+                        }
                     />
                 )}
-
 
                 <TextArea
                     rows={4}

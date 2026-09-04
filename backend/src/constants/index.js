@@ -94,6 +94,8 @@ const ACTIVITY_ACTIONS = {
     PROBLEM_OWNER_CHANGED: "problem_owner_changed",
     INCIDENT_PROBLEM_LINKED: "incident_problem_linked",
     INCIDENT_PROBLEM_UNLINKED: "incident_problem_unlinked",
+    INTAKE_INCIDENT_CREATED: "intake_incident_created",
+    INTAKE_DUPLICATE_RECEIVED: "intake_duplicate_received",
 };
 
 /** Problem Management statuses (FR4-01). */
@@ -155,6 +157,20 @@ const ROLE_LABELS = {
     [ROLES.USER]: "End User",
 };
 
+const INTAKE_SOURCE = {
+    MANUAL: "Manual",
+    EMAIL: "Email",
+    WEBHOOK: "Webhook",
+};
+
+const INTAKE_SOURCE_VALUES = Object.values(INTAKE_SOURCE);
+
+const INTAKE_SOURCE_LABELS = {
+    [INTAKE_SOURCE.MANUAL]: "Manual",
+    [INTAKE_SOURCE.EMAIL]: "Email",
+    [INTAKE_SOURCE.WEBHOOK]: "Webhook",
+};
+
 module.exports = {
     ROLES,
     ROLE_VALUES,
@@ -193,4 +209,7 @@ module.exports = {
     PROBLEM_STATUS_VALUES,
     PROBLEM_STATUS_LABELS,
     PROBLEM_STATUS_TRANSITIONS,
+    INTAKE_SOURCE,
+    INTAKE_SOURCE_VALUES,
+    INTAKE_SOURCE_LABELS,
 };

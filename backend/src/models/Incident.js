@@ -8,6 +8,8 @@ const {
     TERMINAL_STATUSES,
     SLA_HOURS,
     PRIORITY_WEIGHT,
+    INTAKE_SOURCE,          // <-- add this
+    INTAKE_SOURCE_VALUES
 } = require("../constants");
 
 const incidentSchema = new mongoose.Schema(
@@ -128,6 +130,18 @@ const incidentSchema = new mongoose.Schema(
 
         // A major incident is inferred from its Child-Of links; this flag is a display override.
         isMajorIncident: { type: Boolean, default: false, index: true },
+                // --- FR4-19 Source Tagging / FR4-18 Deduplication (Section 12) ---
+        intakeSource: {
+            type: String,
+            enum: ['Manual', 'Email', 'Webhook'],
+            default: 'Manual',
+            index: true,
+        },
+        dedupeKey: {
+            type: String,
+            default: null,
+            index: true,
+        },
     },
     {
         timestamps: true,

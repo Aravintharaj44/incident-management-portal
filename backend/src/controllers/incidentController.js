@@ -20,6 +20,7 @@ const RootCauseAnalysis = require("../models/RootCauseAnalysis");
 const Problem = require("../models/Problem");
 const Department = require("../models/Department");
 const DepartmentUser = require("../models/DepartmentUser");
+const OnCallSchedule  = require("../models/OnCallSchedule");
 const {
     ROLES,
     STATUS,
@@ -246,60 +247,126 @@ const getIncident = asyncHandler(async (req, res) => {
  * POST /api/v1/incidents  (FR-03)
  * Any signed-in user may raise an incident; it is always attributed to them.
  */
-const createIncident = asyncHandler(async (req, res) => {
-    const { title, description, category, priority } = req.body;
+/**
+ * POST /api/v1/incidents  (FR-03)
+ * Any signed-in user may raise an incident; it is always attributed to them.
+ */
+// Example Incident Creation Logic (backend)
+/**
+ * @desc    Create new incident with FR4-22 Auto-Assignment
+ * @route   POST /api/incidents
+ * @access  Private
+ */
+const createIncident = async (req, res) => {
+  console.log("=== CREATE INCIDENT REQUEST RECEIVED ===");
 
-    const categoryDoc = await Category.findById(category);
+  try {
+    const payload = req.body.incident || req.body;
+    let { title, description, category, categoryId, priority } = payload;
 
-    if (!categoryDoc || !categoryDoc.isActive) {
-        throw ApiError.badRequest("Please choose an active category");
+    const selectedCategory = category || categoryId;
+
+    if (!selectedCategory) {
+      return res.status(400).json({
+        success: false,
+        message: "Category is required",
+      });
     }
 
-    const incident = await Incident.create({
-        title,
-        description,
-        category: categoryDoc._id,
-        priority,
-        // Never read from the body: the reporter is whoever is signed in.
-        reportedBy: req.user._id,
-        status: STATUS.NEW,
+    // 1. Normalize priority to lowercase to match PRIORITY_VALUES enum in schema
+    const rawPriority = (priority || "medium").toLowerCase();
+    
+    // Map to exact schema enum values
+    const validPriorityMap = {
+      critical: PRIORITY?.CRITICAL || "critical",
+      high: PRIORITY?.HIGH || "high",
+      medium: PRIORITY?.MEDIUM || "medium",
+      low: PRIORITY?.LOW || "low",
+    };
+
+    const targetPriority = validPriorityMap[rawPriority] || validPriorityMap.medium;
+
+    console.log("Normalized Priority for Schema:", targetPriority);
+
+    // 2. Resolve Department
+    const departmentObj = await Department.findOne({ categories: selectedCategory });
+    let departmentId = departmentObj ? departmentObj._id : null;
+    let assignedTo = null;
+
+    console.log("Resolved Department ID:", departmentId);
+
+    // 3. FR4-22: Auto-Assignment trigger (Checks critical / high)
+   // 3. FR4-22: Auto-Assignment trigger
+if (departmentId && ["critical", "high"].includes(rawPriority)) {
+  const now = new Date();
+
+  let activeShift = await OnCallSchedule.findOne({
+    $or: [{ department: departmentId }, { departmentId: departmentId }],
+    startTime: { $lte: now },
+    endTime: { $gte: now },
+  });
+
+  if (!activeShift) {
+    activeShift = await OnCallSchedule.findOne({
+      $or: [{ department: departmentId }, { departmentId: departmentId }],
+    }).sort({ createdAt: -1 });
+  }
+
+  console.log("Found Roster Document:", activeShift);
+
+  if (activeShift) {
+    // 1. Check escalationChain array for step 1
+    if (Array.isArray(activeShift.escalationChain) && activeShift.escalationChain.length > 0) {
+      const step1 = activeShift.escalationChain.find((e) => e.step === 1) || activeShift.escalationChain[0];
+      assignedTo = step1?.user || step1?.userId || null;
+    }
+
+    // 2. Fallback to root property if escalationChain isn't populated
+    if (!assignedTo) {
+      assignedTo =
+        activeShift.level1Responder ||
+        activeShift.level1 ||
+        activeShift.user ||
+        activeShift.assignedUser ||
+        null;
+    }
+
+    console.log("Assigned Responder User ID:", assignedTo);
+  }
+}
+
+    // 4. Create Incident matching exact schema enum values
+    const newIncident = await Incident.create({
+      title,
+      description,
+      category: selectedCategory,
+      department: departmentId,
+      assignedDepartment: departmentId,
+      assignedTo: assignedTo,
+      priority: targetPriority, // Uses lowercase 'critical' required by schema
+      reportedBy: req.user._id,
+      intakeSource: "Manual",
     });
 
-    await activityService.record({
-        incident: incident._id,
-        action: ACTIVITY_ACTIONS.CREATED,
-        performedBy: req.user._id,
-        note: `Incident raised with ${PRIORITY_LABELS[incident.priority]} priority`,
+    const populatedIncident = await Incident.findById(newIncident._id)
+      .populate("category", "name")
+      .populate("department", "title")
+      .populate("assignedDepartment", "title")
+      .populate("assignedTo", "name email")
+      .populate("reportedBy", "name email");
+
+    return res.status(201).json({
+      success: true,
+      data: populatedIncident,
     });
-
-    logger.event("incident_created", {
-        incidentId: incident.id,
-        number: incident.incidentNumber,
-        by: req.user.id,
+  } catch (error) {
+    console.error("Error creating incident:", error);
+    return res.status(400).json({
+      success: false,
+      message: error.message,
     });
-
-    // Everyone who triages new work should hear about it.
-    const staff = await User.find({
-        role: { $in: [ROLES.ADMIN, ROLES.AGENT] },
-        isActive: true,
-    })
-        .select("name email isActive")
-        .lean();
-
-    // Deliberately not awaited: the reporter should not wait on SMTP for a 201.
-    notificationService.notifyIncidentCreated({
-        incident,
-        reporter: req.user,
-        recipients: staff,
-    });
-
-    const created = await Incident.findById(incident._id).populate(POPULATE).lean();
-
-    return successResponse(res, 201, "Incident created successfully", {
-        incident: decorate(created),
-    });
-});
-
+  }
+};
 /**
  * PATCH /api/v1/incidents/:id
  *
