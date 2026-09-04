@@ -43,6 +43,11 @@ export const problemApi = {
     submitRca: (id) => client.post(`/problems/${id}/rca/submit`),
 
     reviewRca: (id, payload) => client.patch(`/problems/${id}/rca/review`, payload),
+
+    /** FR4-14: link/unlink a KB article. */
+    linkKb: (id, kbArticleId) => client.patch(`/problems/${id}/kb-article`, { kbArticleId }),
+
+    unlinkKb: (id) => client.delete(`/problems/${id}/kb-article`),
 };
 
 export const knownErrorApi = {

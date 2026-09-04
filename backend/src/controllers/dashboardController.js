@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Incident = require("../models/Incident");
 const Category = require("../models/Category");
 const RootCauseAnalysis = require("../models/RootCauseAnalysis");
+const ActionItem = require("../models/ActionItem");
 const IncidentLink = require("../models/IncidentLink");
 const asyncHandler = require("../utils/asyncHandler");
 const { successResponse } = require("../utils/apiResponse");
@@ -15,6 +16,9 @@ const {
     PRIORITY_VALUES,
     PRIORITY_LABELS,
     TERMINAL_STATUSES,
+    ACTION_ITEM_STATUS,
+    ACTION_ITEM_STATUS_VALUES,
+    ACTION_ITEM_STATUS_LABELS,
 } = require("../constants");
 
 /**
@@ -373,6 +377,64 @@ const getAdvancedAnalytics = asyncHandler(async (req, res) => {
             { $project: { _id: 0, agentId: "$_id", name: "$agent.name", resolved: 1, averageHours: { $round: [{ $divide: ["$avgMs", 3600000] }, 1] }, slaCompliance: { $round: [{ $multiply: [{ $divide: ["$slaMet", "$resolved"] }, 100] }, 1] } } }, { $sort: { resolved: -1 } },
         ]),
     ]);
-    return successResponse(res, 200, "Advanced analytics retrieved", { trend: trend.map((row) => ({ date: row._id, count: row.count })), rootCauses: rootCauses.map((row) => ({ category: row._id, count: row.count })), majorIncidents, performance });
+return successResponse(res, 200, "Advanced analytics retrieved", { trend: trend.map((row) => ({ date: row._id, count: row.count })), rootCauses: rootCauses.map((row) => ({ category: row._id, count: row.count })), majorIncidents, performance });
 });
-module.exports = { getSummary, getCharts, getAgentWorkload, getRecentIncidents, getAdvancedAnalytics };
+
+/**
+ * Action items are a staff concern: an Admin sees everything, a Support Agent
+ * sees their own items plus any still unassigned, exactly matching the
+ * action-item list endpoint (FR4-09 widget).
+ */
+const actionItemScope = (user) => {
+    if (permissions.isAdmin(user)) return {};
+    if (permissions.isAgent(user)) return { $or: [{ ownerId: user._id }, { ownerId: null }] };
+    return { _id: null };
+};
+
+/** GET /api/v1/dashboard/action-items - RCA Action Item widget (FR4-09). */
+const getActionItemSummary = asyncHandler(async (req, res) => {
+    const scope = actionItemScope(req.user);
+    const now = new Date();
+    const since30 = new Date(now.getTime() - 30 * 24 * 3600000);
+
+    const [byRca, statusRows, recentlyCreated, recentlyCompleted, overdue] = await Promise.all([
+        // "RCAs with open action items" - the widget's primary tile.
+        ActionItem.aggregate([
+            { $match: { ...scope, status: { $in: [ACTION_ITEM_STATUS.OPEN, ACTION_ITEM_STATUS.IN_PROGRESS, ACTION_ITEM_STATUS.OVERDUE] } } },
+            { $group: { _id: "$rcaId", open: { $sum: 1 } } },
+            { $sort: { open: -1 } },
+            { $lookup: { from: "rootcauseanalyses", localField: "_id", foreignField: "_id", as: "rca" } },
+            { $unwind: "$rca" },
+            { $project: { _id: 1, rcaId: "$rca._id", incident: "$rca.incident", problem: "$rca.problem", status: "$rca.status", open: 1 } },
+            { $limit: 10 },
+        ]),
+
+        ActionItem.aggregate([
+            { $match: scope },
+            { $group: { _id: "$status", count: { $sum: 1 } } },
+        ]),
+
+        ActionItem.countDocuments({ ...scope, createdAt: { $gte: since30 } }),
+        ActionItem.countDocuments({ ...scope, completedAt: { $gte: since30 } }),
+        ActionItem.countDocuments({ ...scope, status: ACTION_ITEM_STATUS.OVERDUE }),
+    ]);
+
+    const byStatus = densify(statusRows, ACTION_ITEM_STATUS_VALUES, ACTION_ITEM_STATUS_LABELS);
+
+    return successResponse(res, 200, "Action item summary retrieved", {
+        counts: {
+            total: byStatus.reduce((sum, row) => sum + row.count, 0),
+            open: byStatus.find((row) => row.key === ACTION_ITEM_STATUS.OPEN)?.count || 0,
+            inProgress: byStatus.find((row) => row.key === ACTION_ITEM_STATUS.IN_PROGRESS)?.count || 0,
+            done: byStatus.find((row) => row.key === ACTION_ITEM_STATUS.DONE)?.count || 0,
+            overdue,
+            byRcaCount: byRca.length,
+            recentlyCreated,
+            recentlyCompleted,
+        },
+        byStatus,
+        byRca,
+    });
+});
+
+module.exports = { getSummary, getCharts, getAgentWorkload, getRecentIncidents, getAdvancedAnalytics, getActionItemSummary };

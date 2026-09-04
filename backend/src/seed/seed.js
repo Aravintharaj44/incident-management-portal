@@ -17,8 +17,10 @@ const Department = require("../models/Department");
 const DepartmentUser = require("../models/DepartmentUser");
 const Problem = require("../models/Problem");
 const RootCauseAnalysis = require("../models/RootCauseAnalysis");
+const ActionItem = require("../models/ActionItem");
+const KnowledgeBaseArticle = require("../models/KnowledgeBaseArticle");
 
-const { ROLES, STATUS, PRIORITY, ACTIVITY_ACTIONS, PROBLEM_STATUS } = require("../constants");
+const { ROLES, STATUS, PRIORITY, ACTIVITY_ACTIONS, PROBLEM_STATUS, ACTION_ITEM_STATUS, KBA_STATUS } = require("../constants");
 
 /**
  * Seeds a realistic demo data set so the portal can be reviewed without
@@ -222,6 +224,7 @@ const clearCollections = async () => {
         DepartmentUser.deleteMany({}),
         Problem.deleteMany({}),
         RootCauseAnalysis.deleteMany({}),
+        ActionItem.deleteMany({}),
     ]);
 
     logger.info("Cleared existing collections");
@@ -505,6 +508,188 @@ const seedProblems = async (usersByEmail, categoriesByName) => {
     return { knownError, newProblem };
 };
 
+/**
+ * V4 - RCA Action Items demo data (FR4-07..08). Adds approved RCAs where the
+ * existing seed has none (the incident-scoped one), then spreads a realistic
+ * set of action items across the approved incident- and problem-scoped RCAs so
+ * the tracker list, notifications and dashboard widget all have data.
+ */
+const seedActionItems = async (usersByEmail) => {
+    const admin = usersByEmail.get("admin@zybisys.com");
+    const agentRahul = usersByEmail.get("rahul.agent@zybisys.com");
+    const agentPriya = usersByEmail.get("priya.agent@zybisys.com");
+
+    // Approved incident-scoped RCA for the (still open) failed backup incident.
+    const backupIncident = await Incident.findOne({
+        title: "Backup job for the document server failed three nights running",
+    }).exec();
+
+    let incidentRca = null;
+    if (backupIncident) {
+        incidentRca = await RootCauseAnalysis.create({
+            incident: backupIncident._id,
+            rootCauseCategory: "technology",
+            rootCauseDescription:
+                "The backup target filled to capacity, so the nightly job aborted before copying any data.",
+            why1: "Why did the backup fail?", "why2": "Why did the target run out of space?",
+            why3: "Why was the retention policy not cleaning archives?", "why4": "Why was the alert not raised?",
+            why5: "Why was the capacity threshold not monitored?",
+            correctiveActions: "Purge obsolete archives and raise the capacity monitoring threshold.",
+            preventiveActions: "Add a capacity alerting rule to the monitoring stack.",
+            status: "approved",
+            author: admin._id,
+            reviewedBy: admin._id,
+        });
+    }
+
+    // The approved problem-scoped RCA created in seedProblems.
+    const problemRca = await RootCauseAnalysis.findOne({ problem: { $ne: null }, status: "approved" }).exec();
+
+    const days = (offset) => new Date(Date.now() + offset * 24 * 3600000);
+    const items = [];
+
+    if (incidentRca) {
+        items.push(
+            {
+                rcaId: incidentRca._id,
+                description: "Purge backup archives older than the retention policy to bring the target under 85% capacity.",
+                ownerId: agentRahul._id,
+                dueDate: days(-1),
+                status: ACTION_ITEM_STATUS.OVERDUE,
+                overdueNotifiedAt: days(-1),
+            },
+            {
+                rcaId: incidentRca._id,
+                description: "Raise the monitoring threshold so the backup target cannot reach 98% unnoticed again.",
+                ownerId: agentRahul._id,
+                dueDate: days(3),
+                status: ACTION_ITEM_STATUS.IN_PROGRESS,
+            }
+        );
+    }
+
+    if (problemRca) {
+        items.push(
+            {
+                rcaId: problemRca._id,
+                description: "Apply the patched concentrator firmware across all regions and confirm session stability.",
+                ownerId: agentRahul._id,
+                dueDate: days(4),
+                status: ACTION_ITEM_STATUS.OPEN,
+            },
+            {
+                rcaId: problemRca._id,
+                description: "Add peak-load simulation for concentrator firmware to the release checklist.",
+                ownerId: agentPriya._id,
+                dueDate: days(-3),
+                status: ACTION_ITEM_STATUS.OVERDUE,
+                overdueNotifiedAt: days(-3),
+            }
+        );
+    }
+
+    let created = 0;
+    for (const spec of items) {
+        const actionItem = new ActionItem({
+            rcaId: spec.rcaId,
+            description: spec.description,
+            ownerId: spec.ownerId,
+            dueDate: spec.dueDate,
+            status: spec.status,
+            overdueNotifiedAt: spec.overdueNotifiedAt || null,
+        });
+        await actionItem.save();
+        created += 1;
+    }
+
+    logger.info(`Created ${created} action items`);
+};
+
+const seedKBArticles = async (usersByEmail, categoriesByName) => {
+    const agent = usersByEmail.get("rahul.agent@zybisys.com");
+    const admin = usersByEmail.get("admin@zybisys.com");
+    const networkCat = categoriesByName.get("Network");
+    const applicationCat = categoriesByName.get("Application");
+    const hardwareCat = categoriesByName.get("Hardware");
+    const accessCat = categoriesByName.get("Access");
+
+    const articles = [
+        {
+            title: "VPN Connection Drops After 5 Minutes",
+            body: "Some users report their VPN connection drops after approximately 5 minutes of inactivity.\n\nWorkaround: Keep the connection active by pinging the gateway periodically, or adjust the keepalive interval in the VPN client settings to 60 seconds.\n\nRoot cause: The corporate firewall is configured with an aggressive idle timeout for VPN sessions. A permanent fix requires updating the firewall policy.",
+            categories: networkCat ? [networkCat._id] : [],
+            tags: ["vpn", "network", "firewall"],
+            authorID: agent._id,
+            status: KBA_STATUS.PUBLISHED,
+            helpfulCount: 5,
+            notHelpfulCount: 1,
+        },
+        {
+            title: "Timesheet App Logout After Save",
+            body: "The timesheet application logs users out after every save operation. The entry is saved successfully, but the session is terminated.\n\nWorkaround: Save your timesheet entries one at a time, and log back in after each save. Alternatively, use the bulk-save feature if available.\n\nThis is a known bug in v2.3.1 of the timesheet module. A fix is being developed for the next release.",
+            categories: applicationCat ? [applicationCat._id] : [],
+            tags: ["timesheet", "session", "application"],
+            authorID: admin._id,
+            status: KBA_STATUS.PUBLISHED,
+            helpfulCount: 3,
+            notHelpfulCount: 0,
+        },
+        {
+            title: "Application Login Troubleshooting Guide",
+            body: "When users cannot log into business applications, check the following in order:\n\n1. Verify the account is active in Active Directory\n2. Confirm the user is entering the correct domain (e.g. ZYBISYS\\username)\n3. Check whether the application password is synced with Active Directory\n4. If the user recently changed their Windows password, the application may cache the old one for up to 30 minutes\n\nFor repeated lockouts, escalate to the access team with the user's lockout timestamp.",
+            categories: applicationCat ? [applicationCat._id] : [],
+            tags: ["login", "application", "authentication", "access"],
+            authorID: agent._id,
+            status: KBA_STATUS.PUBLISHED,
+            helpfulCount: 4,
+            notHelpfulCount: 1,
+        },
+        {
+            title: "Application Password Reset Walkthrough",
+            body: "Standard self-service password reset for business applications:\n\n1. Open the application's forgot-password page\n2. Enter the corporate email address\n3. Click the link in the reset email (valid for 30 minutes)\n4. Set a password of at least 12 characters with upper, lower, digit and symbol\n5. The account unlocks automatically once the reset completes\n\nIf no email arrives, check the junk folder then contact the helpdesk.",
+            categories: applicationCat ? [applicationCat._id] : [],
+            tags: ["password", "reset", "application", "access"],
+            authorID: admin._id,
+            status: KBA_STATUS.PUBLISHED,
+            helpfulCount: 2,
+            notHelpfulCount: 0,
+        },
+        {
+            title: "Printer Queue Stuck on Windows 11",
+            body: "After a Windows 11 update, the print queue can get stuck in a 'spooling' state and no documents print.\n\nSteps to resolve:\n1. Open Services (services.msc)\n2. Restart the 'Print Spooler' service\n3. Clear the pending documents from C:\\Windows\\System32\\spool\\PRINTERS\n4. Restart the Print Spooler service again\n\nIf the issue persists after these steps, the printer driver may need to be reinstalled.",
+            categories: hardwareCat ? [hardwareCat._id] : [],
+            tags: ["printer", "windows", "spooler"],
+            authorID: agent._id,
+            status: KBA_STATUS.PUBLISHED,
+            helpfulCount: 8,
+            notHelpfulCount: 2,
+        },
+        {
+            title: "New Hire Access Provisioning Checklist",
+            body: "When a new employee joins, the following access needs to be provisioned within their first week:\n\n1. Email account (IT team)\n2. VPN access (Network team)\n3. HR system access (HR team)\n4. Finance system access (Finance team)\n5. Department-specific tool access (Team lead)\n\nAll provisioning requests should be submitted through the IT portal within 24 hours of the employee's start date.",
+            categories: accessCat ? [accessCat._id] : [],
+            tags: ["onboarding", "access", "new-hire"],
+            authorID: admin._id,
+            status: KBA_STATUS.PUBLISHED,
+            helpfulCount: 2,
+            notHelpfulCount: 0,
+        },
+    ];
+
+    let created = 0;
+    for (const article of articles) {
+        if (!article.categories.length) continue;
+        try {
+            await new KnowledgeBaseArticle(article).save();
+            created += 1;
+        } catch (err) {
+            logger.warn(`Failed to seed KB article "${article.title}": ${err.message}`);
+        }
+    }
+
+    logger.info(`Created ${created} KB articles`);
+};
+
 const run = async () => {
     validateEnv();
     await connectDB();
@@ -529,6 +714,8 @@ const run = async () => {
 
     await seedIncidents(usersByEmail, categoriesByName, departmentsByCategory);
     await seedProblems(usersByEmail, categoriesByName);
+    await seedActionItems(usersByEmail);
+    await seedKBArticles(usersByEmail, categoriesByName);
 
     // Make sure the indexes declared in the schemas actually exist, so a fresh
     // database behaves like a long-running one.
@@ -543,6 +730,8 @@ const run = async () => {
         DepartmentUser.syncIndexes(),
         Problem.syncIndexes(),
         RootCauseAnalysis.syncIndexes(),
+        ActionItem.syncIndexes(),
+        KnowledgeBaseArticle.syncIndexes(),
     ]);
 
     console.log("\n=========================================================");

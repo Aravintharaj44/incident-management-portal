@@ -27,6 +27,15 @@ const activityLogSchema = new mongoose.Schema(
             index: true,
         },
 
+        // V4 - Knowledge Base (FR4-14). Activity entries may optionally
+        // reference a KB article (e.g. linked/unlinked/feedback).
+        kbArticle: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "KnowledgeBaseArticle",
+            default: null,
+            index: true,
+        },
+
         action: {
             type: String,
             enum: Object.values(ACTIVITY_ACTIONS),
@@ -52,10 +61,10 @@ const activityLogSchema = new mongoose.Schema(
     }
 );
 
-/** Every audit entry must hang off an incident or a problem, never neither. */
+/** Every audit entry must hang off an incident, problem, or kbArticle, never none. */
 activityLogSchema.pre("validate", function requireAnchor() {
-    if (!this.incident && !this.problem) {
-        this.invalidate("incident", "An activity entry must reference an incident or a problem");
+    if (!this.incident && !this.problem && !this.kbArticle) {
+        this.invalidate("incident", "An activity entry must reference an incident, a problem, or a KB article");
     }
 });
 

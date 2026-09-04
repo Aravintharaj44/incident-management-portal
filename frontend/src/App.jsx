@@ -31,6 +31,9 @@ const ProblemsPage = lazy(() => import("./pages/problems/ProblemsPage"));
 const ProblemCreatePage = lazy(() => import("./pages/problems/ProblemCreatePage"));
 const ProblemDetailPage = lazy(() => import("./pages/problems/ProblemDetailPage"));
 const KnownErrorsPage = lazy(() => import("./pages/problems/KnownErrorsPage"));
+const KbListPage = lazy(() => import("./pages/kb/KbListPage"));
+const KbDetailPage = lazy(() => import("./pages/kb/KbDetailPage"));
+const KbCreateEditPage = lazy(() => import("./pages/kb/KbCreateEditPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const ApiDocsPage = lazy(() => import("./pages/ApiDocsPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
@@ -39,6 +42,7 @@ const DepartmentsPage = lazy(() => import("./pages/admin/DepartmentsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const ForbiddenPage = lazy(() => import("./pages/ForbiddenPage"));
 const OnCallPage = lazy(() => import("./pages/admin/OnCallPage"));
+const SurveyPage = lazy(() => import("./pages/survey/SurveyPage"));
 
 const RouteFallback = () => (
     <div style={{ display: "grid", placeItems: "center", minHeight: 320 }}>
@@ -53,6 +57,11 @@ const App = () => (
                 {/* Public */}
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                {/* FR4-26 - Post Resolution Survey */}
+                <Route
+                    path="/survey/:token"
+                    element={<SurveyPage />}
+                />
 
                 {/* Everything below requires a session */}
                 <Route element={<ProtectedRoute />}>
@@ -81,6 +90,12 @@ const App = () => (
                             <Route path="/problems/:id" element={<ProblemDetailPage />} />
                             <Route path="/known-errors" element={<KnownErrorsPage />} />
                         </Route>
+
+                        {/* KB - all authenticated users can view; staff can create/edit */}
+                        <Route path="/kb" element={<KbListPage />} />
+                        <Route path="/kb/new" element={<KbCreateEditPage />} />
+                        <Route path="/kb/:id" element={<KbDetailPage />} />
+                        <Route path="/kb/:id/edit" element={<KbCreateEditPage />} />
 
                         {/* Admin only (FR-13) */}
                         <Route element={<RoleRoute allowedRoles={[ROLES.ADMIN]} />}>

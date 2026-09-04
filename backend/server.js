@@ -8,6 +8,9 @@ const startEmailIntakeJob = require("./src/cron/emailIntakeJob");
 const {
     startOverdueIncidentJob,
 } = require("./src/cron/overdueIncidentJob");
+const {
+    startOverdueActionItemJob,
+} = require("./src/cron/overdueActionItemJob");
 
 const { startEscalationJob } = require("./src/cron/escalationCron");
 
@@ -25,6 +28,7 @@ const startServer = async () => {
         // startOverdueIncidentJob()
         startEmailIntakeJob();
         startEscalationJob();
+        // startOverdueActionItemJob()
     } catch (error) {
         logger.error(`Startup failed: ${error.message}`);
         process.exit(1);

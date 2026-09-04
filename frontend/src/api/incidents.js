@@ -57,6 +57,15 @@ export const incidentApi = {
 
     unlinkProblem: (id) => client.delete(`/incidents/${id}/problem`),
 
+    /** FR4-14: link/unlink multiple KB articles to an incident. */
+    linkKb: (id, kbArticleId) => client.post(`/incidents/${id}/kb-articles`, { kbArticleId }),
+
+    unlinkKb: (id, articleId) => client.delete(`/incidents/${id}/kb-articles/${articleId}`),
+
+    listKbArticles: (id) => client.get(`/incidents/${id}/kb-articles`),
+
+    searchKbArticles: (id, params) => client.get(`/incidents/${id}/kb-articles/search`, { params: cleanParams(params) }),
+
     remove: (id) => client.delete(`/incidents/${id}`),
 
     /**

@@ -4,7 +4,10 @@ const logger = require("../utils/logger");
 const emailService = require("./emailService");
 const { NOTIFICATION_TYPES, STATUS_LABELS } = require("../constants");
 const { idOf } = require("./permissionService");
-
+const PostResolutionSurvey = require("../models/PostResolutionSurvey");
+const {
+    createPostResolutionSurvey,
+} = require("./surveyService");
 /**
  * Fan-out for FR-09: writes the in-app notification row and fires the matching
  * email.
@@ -160,9 +163,138 @@ const notifyCommentAdded = async ({ incident, comment, author, staffOnly = false
     }
 };
 
+/* --------------------------------------------------------------------------
+ * V4 - RCA Action Item notifications (FR4-08).
+ *
+ * Each notifications about an action item is addressed to its owner. The owner
+ * is never notified about an action they performed themselves (mirrors
+ * resolveRecipients excluding the actor).
+ * ------------------------------------------------------------------------ */
+
+/** Assigned to me (create or owner reassignment). */
+const notifyActionItemAssigned = async ({ actionItem, owner, assignedBy }) => {
+    try {
+        const targets = await hydrate(resolveRecipients([owner], assignedBy));
+        if (!targets.length) return;
+
+        await createInApp(targets, {
+            type: NOTIFICATION_TYPES.ACTION_ITEM_ASSIGNED,
+            title: "Action item assigned to you",
+            body: actionItem.description.slice(0, 140),
+            incident: actionItem.rca?.incident || null,
+        });
+
+        await Promise.all(
+            targets.map((to) =>
+                emailService.sendActionItemAssigned({ to: to.email, actionItem, owner, assignedBy })
+            )
+        );
+    } catch (error) {
+        logger.error("notifyActionItemAssigned failed", error.message);
+    }
+};
+
+/** Approaching due date, fired by the scheduled process. */
+const notifyActionItemDueSoon = async ({ actionItem, owner }) => {
+    try {
+        const targets = await hydrate(resolveRecipients([owner], null));
+        if (!targets.length) return false;
+
+        await createInApp(targets, {
+            type: NOTIFICATION_TYPES.ACTION_ITEM_DUE_SOON,
+            title: "Action item due soon",
+            body: actionItem.description.slice(0, 140),
+            incident: actionItem.rca?.incident || null,
+        });
+
+        await Promise.all(
+            targets.map((to) =>
+                emailService.sendActionItemDueSoon({ to: to.email, actionItem })
+            )
+        );
+        return true;
+    } catch (error) {
+        logger.error("notifyActionItemDueSoon failed", error.message);
+        return false;
+    }
+};
+
+/** Due date passed and the item is unresolved. */
+const notifyActionItemOverdue = async ({ actionItem, owner }) => {
+    try {
+        const targets = await hydrate(resolveRecipients([owner], null));
+        if (!targets.length) return false;
+
+        await createInApp(targets, {
+            type: NOTIFICATION_TYPES.ACTION_ITEM_OVERDUE,
+            title: "Action item is overdue",
+            body: actionItem.description.slice(0, 140),
+            incident: actionItem.rca?.incident || null,
+        });
+
+        await Promise.all(
+            targets.map((to) =>
+                emailService.sendActionItemOverdue({ to: to.email, actionItem })
+            )
+        );
+        return true;
+    } catch (error) {
+        logger.error("notifyActionItemOverdue failed", error.message);
+        return false;
+    }
+};
+
+const notifyPostResolutionSurvey = async ({ incident }) => {
+    try {
+        const reporter = incident.reportedBy;
+
+        if (!reporter) {
+            logger.warn(
+                `Cannot send survey for ${incident.incidentNumber}: reporter not found`
+            );
+            return;
+        }
+
+        const targets = await hydrate([reporter]);
+
+        if (!targets.length) {
+            logger.warn(
+                `Cannot send survey for ${incident.incidentNumber}: reporter email not found`
+            );
+            return;
+        }
+
+        const survey = await createPostResolutionSurvey(incident);
+
+        if (!survey) return;
+
+        await Promise.all(
+            targets.map((to) =>
+                emailService.sendPostResolutionSurvey({
+                    to: to.email,
+                    incident,
+                    token: survey.token,
+                })
+            )
+        );
+
+        logger.info(
+            `Post-resolution survey sent for ${incident.incidentNumber}`
+        );
+    } catch (error) {
+        logger.error(
+            `notifyPostResolutionSurvey failed: ${error.message}`
+        );
+    }
+};
+
 module.exports = {
     notifyIncidentCreated,
     notifyIncidentAssigned,
     notifyStatusChanged,
     notifyCommentAdded,
+    notifyActionItemAssigned,
+    notifyActionItemDueSoon,
+    notifyActionItemOverdue,
+    notifyPostResolutionSurvey
 };

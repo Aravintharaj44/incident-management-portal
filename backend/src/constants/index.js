@@ -96,6 +96,22 @@ const ACTIVITY_ACTIONS = {
     INCIDENT_PROBLEM_UNLINKED: "incident_problem_unlinked",
     INTAKE_INCIDENT_CREATED: "intake_incident_created",
     INTAKE_DUPLICATE_RECEIVED: "intake_duplicate_received",
+    // V4 - RCA Action Items (FR4-07..10)
+    ACTION_ITEM_CREATED: "action_item_created",
+    ACTION_ITEM_UPDATED: "action_item_updated",
+    ACTION_ITEM_ASSIGNED: "action_item_assigned",
+    ACTION_ITEM_STATUS_CHANGED: "action_item_status_changed",
+    ACTION_ITEM_COMPLETED: "action_item_completed",
+    // V4 - Knowledge Base (FR4-11..15)
+    KB_ARTICLE_CREATED: "kb_article_created",
+    KB_ARTICLE_UPDATED: "kb_article_updated",
+    KB_ARTICLE_PUBLISHED: "kb_article_published",
+    KB_ARTICLE_LINKED: "kb_article_linked",
+    KB_ARTICLE_UNLINKED: "kb_article_unlinked",
+    KB_ARTICLE_FEEDBACK: "kb_article_feedback",
+    // V4 - Incident KB linking (incident-scoped actions)
+    INCIDENT_KB_LINKED: "incident_kb_article_linked",
+    INCIDENT_KB_UNLINKED: "incident_kb_article_unlinked",
 };
 
 /** Problem Management statuses (FR4-01). */
@@ -133,6 +149,10 @@ const NOTIFICATION_TYPES = {
     STATUS_CHANGED: "status_changed",
     COMMENT_ADDED: "comment_added",
     INCIDENT_OVERDUE: "incident_overdue",
+    // V4 - Action Item notifications (FR4-08)
+    ACTION_ITEM_ASSIGNED: "action_item_assigned",
+    ACTION_ITEM_DUE_SOON: "action_item_due_soon",
+    ACTION_ITEM_OVERDUE: "action_item_overdue",
 };
 
 /** Human-readable labels, reused by the email templates and the CSV export. */
@@ -171,24 +191,52 @@ const INTAKE_SOURCE_LABELS = {
     [INTAKE_SOURCE.WEBHOOK]: "Webhook",
 };
 
-module.exports = {
-    ROLES,
-    ROLE_VALUES,
-    ROLE_LABELS,
-    STATUS,
-    STATUS_VALUES,
-    STATUS_LABELS,
-    STATUS_TRANSITIONS,
-    TERMINAL_STATUSES,
-    PRIORITY,
-    PRIORITY_VALUES,
-    PRIORITY_LABELS,
-    PRIORITY_WEIGHT,
-    SLA_HOURS,
-    ACTIVITY_ACTIONS,
-    NOTIFICATION_TYPES,
+
+const ACTION_ITEM_STATUS = {
+    OPEN: "open",
+    IN_PROGRESS: "in_progress",
+    DONE: "done",
+    OVERDUE: "overdue",
+}
+
+const ACTION_ITEM_STATUS_VALUES = Object.values(ACTION_ITEM_STATUS);
+
+const ACTION_ITEM_STATUS_LABELS = {
+    [ACTION_ITEM_STATUS.OPEN]: "Open",
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: "In Progress",
+    [ACTION_ITEM_STATUS.DONE]: "Done",
+    [ACTION_ITEM_STATUS.OVERDUE]: "Overdue",
 };
 
+/**
+ * Allowed Action Item status transitions (FR4-07 workflow). Open/In Progress
+ * may be completed; an item that is done never returns to overdue. Overdue can
+ * be completed, reopened to In Progress/Open, or acted on. Reopening an item
+ * out of Done is supported and clears completion evidence consistently.
+ */
+const ACTION_ITEM_STATUS_TRANSITIONS = {
+    [ACTION_ITEM_STATUS.OPEN]: [ACTION_ITEM_STATUS.IN_PROGRESS, ACTION_ITEM_STATUS.DONE],
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: [ACTION_ITEM_STATUS.OPEN, ACTION_ITEM_STATUS.DONE],
+    [ACTION_ITEM_STATUS.DONE]: [ACTION_ITEM_STATUS.OPEN, ACTION_ITEM_STATUS.IN_PROGRESS],
+    [ACTION_ITEM_STATUS.OVERDUE]: [ACTION_ITEM_STATUS.IN_PROGRESS, ACTION_ITEM_STATUS.OPEN, ACTION_ITEM_STATUS.DONE],
+};
+
+const KBA_STATUS = {
+    DRAFT: "draft",
+    PUBLISHED: "published",
+    RETIRED: "retired",
+    ARCHIVED: "archived"
+};
+
+const KBA_STATUS_VALUE = Object.values(KBA_STATUS);
+
+const SURVEY_STATUS = {
+    PENDING: "pending",
+    DONE: "done",
+    REJECTED: "rejected",
+    COMPLETED: "completed",
+}
+const SURVEY_STATUS_VALUE = Object.values(SURVEY_STATUS);
 module.exports = {
     ROLES,
     ROLE_VALUES,
@@ -212,4 +260,12 @@ module.exports = {
     INTAKE_SOURCE,
     INTAKE_SOURCE_VALUES,
     INTAKE_SOURCE_LABELS,
+    ACTION_ITEM_STATUS,
+    ACTION_ITEM_STATUS_VALUES,
+    ACTION_ITEM_STATUS_LABELS,
+    ACTION_ITEM_STATUS_TRANSITIONS,
+    KBA_STATUS,
+    KBA_STATUS_VALUE,
+    SURVEY_STATUS_VALUE,
+    SURVEY_STATUS,
 };

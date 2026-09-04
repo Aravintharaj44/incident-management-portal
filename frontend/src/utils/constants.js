@@ -180,3 +180,92 @@ export const PROBLEM_STATUS_TRANSITIONS = {
 };
 
 export const PROBLEM_STATUS_TERMINAL = [PROBLEM_STATUS.RESOLVED];
+
+/* ---------------------------------------------------------------------------
+ * V4 - RCA Action Items (FR4-07..10). Mirrors backend ACTION_ITEM_STATUS.
+ * ------------------------------------------------------------------------- */
+
+export const ACTION_ITEM_STATUS = {
+    OPEN: "open",
+    IN_PROGRESS: "in_progress",
+    DONE: "done",
+    OVERDUE: "overdue",
+};
+
+export const ACTION_ITEM_STATUS_LABELS = {
+    [ACTION_ITEM_STATUS.OPEN]: "Open",
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: "In Progress",
+    [ACTION_ITEM_STATUS.DONE]: "Done",
+    [ACTION_ITEM_STATUS.OVERDUE]: "Overdue",
+};
+
+export const ACTION_ITEM_STATUS_COLORS = {
+    [ACTION_ITEM_STATUS.OPEN]: "blue",
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: "gold",
+    [ACTION_ITEM_STATUS.DONE]: "green",
+    [ACTION_ITEM_STATUS.OVERDUE]: "red",
+};
+
+/** Order for filters/dropdowns. */
+export const ACTION_ITEM_STATUS_ORDER = [
+    ACTION_ITEM_STATUS.OPEN,
+    ACTION_ITEM_STATUS.IN_PROGRESS,
+    ACTION_ITEM_STATUS.DONE,
+    ACTION_ITEM_STATUS.OVERDUE,
+];
+
+export const ACTION_ITEM_STATUS_OPTIONS = asOptions(
+    ACTION_ITEM_STATUS_LABELS,
+    ACTION_ITEM_STATUS_ORDER
+);
+
+/** Mirrors ACTION_ITEM_STATUS_TRANSITIONS on the server. */
+export const ACTION_ITEM_STATUS_TRANSITIONS = {
+    [ACTION_ITEM_STATUS.OPEN]: [
+        ACTION_ITEM_STATUS.IN_PROGRESS,
+        ACTION_ITEM_STATUS.DONE,
+    ],
+    [ACTION_ITEM_STATUS.IN_PROGRESS]: [
+        ACTION_ITEM_STATUS.OPEN,
+        ACTION_ITEM_STATUS.DONE,
+    ],
+    [ACTION_ITEM_STATUS.DONE]: [
+        ACTION_ITEM_STATUS.OPEN,
+        ACTION_ITEM_STATUS.IN_PROGRESS,
+    ],
+    [ACTION_ITEM_STATUS.OVERDUE]: [
+        ACTION_ITEM_STATUS.IN_PROGRESS,
+        ACTION_ITEM_STATUS.OPEN,
+        ACTION_ITEM_STATUS.DONE,
+    ],
+};
+
+/* ---------------------------------------------------------------------------
+ * V4 - Knowledge Base (FR4-11..15). Mirrors backend KBA_STATUS.
+ * ------------------------------------------------------------------------- */
+
+export const KBA_STATUS = {
+    DRAFT: "draft",
+    PUBLISHED: "published",
+    ARCHIVED: "archived",
+};
+
+export const KBA_STATUS_LABELS = {
+    [KBA_STATUS.DRAFT]: "Draft",
+    [KBA_STATUS.PUBLISHED]: "Published",
+    [KBA_STATUS.ARCHIVED]: "Archived",
+};
+
+export const KBA_STATUS_COLORS = {
+    [KBA_STATUS.DRAFT]: "orange",
+    [KBA_STATUS.PUBLISHED]: "green",
+    [KBA_STATUS.ARCHIVED]: "default",
+};
+
+export const KBA_STATUS_ORDER = [
+    KBA_STATUS.DRAFT,
+    KBA_STATUS.PUBLISHED,
+    KBA_STATUS.ARCHIVED,
+];
+
+export const KBA_STATUS_OPTIONS = asOptions(KBA_STATUS_LABELS, KBA_STATUS_ORDER);

@@ -4,8 +4,9 @@ const {
     STATUS_VALUES,
     PRIORITY_VALUES,
     PROBLEM_STATUS_VALUES,
+    ACTION_ITEM_STATUS_VALUES,
+    KBA_STATUS_VALUE,
 } = require("../constants");
-
 /**
  * Request validation rules (BRD s17: "Validate all inputs on the backend, even
  * if the frontend also validates").
@@ -461,6 +462,218 @@ const problemRcaValidators = {
     byProblem: [param("id").isMongoId().withMessage("Invalid problem ID")],
     review: [param("id").isMongoId().withMessage("Invalid problem ID"), body("status").isIn(["approved", "returned"]), body("reviewComment").optional().trim().isLength({ max: 2000 })],
 };
+
+// V4 - RCA Action Items (FR4-07..10)
+const actionItemValidators = {
+    create: [
+        body("rcaId").isMongoId().withMessage("Please select a valid RCA"),
+        body("description")
+            .trim()
+            .isLength({ min: 10, max: 5000 })
+            .withMessage("Description must be between 10 and 5000 characters"),
+        body("ownerId").isMongoId().withMessage("Please select a valid owner"),
+        body("dueDate")
+            .isISO8601()
+            .withMessage("Please provide a valid due date"),
+    ],
+
+    update: [
+        objectId("id"),
+        body("description")
+            .optional()
+            .trim()
+            .isLength({ min: 10, max: 5000 })
+            .withMessage("Description must be between 10 and 5000 characters"),
+        body("dueDate")
+            .optional()
+            .isISO8601()
+            .withMessage("Please provide a valid due date"),
+        body("completionNote")
+            .optional({ nullable: true })
+            .trim()
+            .isLength({ max: 5000 })
+            .withMessage("Completion note cannot exceed 5000 characters"),
+    ],
+
+    updateStatus: [
+        objectId("id"),
+        body("status")
+            .isIn(ACTION_ITEM_STATUS_VALUES)
+            .withMessage(`Status must be one of: ${ACTION_ITEM_STATUS_VALUES.join(", ")}`),
+        body("completionNote")
+            .optional({ nullable: true })
+            .trim()
+            .isLength({ max: 5000 })
+            .withMessage("Completion note cannot exceed 5000 characters"),
+    ],
+
+    updateOwner: [
+        objectId("id"),
+        body("ownerId").isMongoId().withMessage("Please select a valid owner"),
+    ],
+
+    byId: [objectId("id")],
+
+    list: [
+        query("page").optional().isInt({ min: 1 }).withMessage("Page must be 1 or more"),
+        query("limit")
+            .optional()
+            .isInt({ min: 1, max: 100 })
+            .withMessage("Limit must be between 1 and 100"),
+        query("rcaId").optional().isMongoId().withMessage("Invalid RCA ID"),
+        query("incidentId").optional().isMongoId().withMessage("Invalid incident ID"),
+        query("problemId").optional().isMongoId().withMessage("Invalid problem ID"),
+        // "me" is a supported owner filter - it resolves to the caller.
+        query("ownerId")
+            .optional()
+            .custom((value) => value === "me" || /^[a-f\d]{24}$/i.test(String(value)))
+            .withMessage("Invalid owner ID"),
+        query("status")
+            .optional()
+            .custom((value) => {
+                const values = String(value).split(",");
+                return values.every((item) => ACTION_ITEM_STATUS_VALUES.includes(item));
+            })
+            .withMessage(`Status must be one of: ${ACTION_ITEM_STATUS_VALUES.join(", ")}`),
+        query("sortOrder")
+            .optional()
+            .isIn(["asc", "desc"])
+            .withMessage("sortOrder must be 'asc' or 'desc'"),
+    ],
+};
+const knowledgeBaseArticleValidators = {
+    create: [
+        body("title")
+            .trim()
+            .isLength({ min: 3, max: 250 })
+            .withMessage("Title must be between 3 and 250 characters")
+            .customSanitizer(stripTags),
+        body("body")
+            .trim()
+            .isLength({ min: 10 })
+            .withMessage("Body must be at least 10 characters"),
+        body("categories")
+            .isArray({ min: 1 })
+            .withMessage("At least one category is required"),
+        body("categories.*")
+            .optional()
+            .isMongoId()
+            .withMessage("Each category must be a valid ID"),
+        body("tags")
+            .optional()
+            .custom((value) => {
+                if (value === null || value === undefined) return true;
+                if (!Array.isArray(value)) return false;
+                return value.every((t) => typeof t === "string" && t.trim().length > 0);
+            })
+            .withMessage("Tags must be an array of non-empty strings"),
+        body("status")
+            .optional()
+            .isIn(KBA_STATUS_VALUE)
+            .withMessage(`Status must be one of: ${KBA_STATUS_VALUE.join(", ")}`),
+    ],
+    update: [
+        objectId("id"),
+        body("title")
+            .optional()
+            .trim()
+            .isLength({ min: 3, max: 250 })
+            .withMessage("Title must be between 3 and 250 characters")
+            .customSanitizer(stripTags),
+        body("body")
+            .optional()
+            .trim()
+            .isLength({ min: 10 })
+            .withMessage("Body must be at least 10 characters"),
+        body("categories")
+            .optional()
+            .isArray({ min: 1 })
+            .withMessage("At least one category is required"),
+        body("categories.*")
+            .optional()
+            .isMongoId()
+            .withMessage("Each category must be a valid ID"),
+        body("tags")
+            .optional()
+            .custom((value) => {
+                if (value === null || value === undefined) return true;
+                if (!Array.isArray(value)) return false;
+                return value.every((t) => typeof t === "string" && t.trim().length > 0);
+            })
+            .withMessage("Tags must be an array of non-empty strings"),
+        body("status")
+            .optional()
+            .isIn(KBA_STATUS_VALUE)
+            .withMessage(`Status must be one of: ${KBA_STATUS_VALUE.join(", ")}`),
+    ],
+    byId: [objectId("id")],
+    list: [
+        query("page").optional().isInt({ min: 1 }).withMessage("Page must be 1 or more"),
+        query("limit")
+            .optional()
+            .isInt({ min: 1, max: 100 })
+            .withMessage("Limit must be between 1 and 100"),
+        query("search")
+            .optional()
+            .trim()
+            .isLength({ max: 140 })
+            .withMessage("Search term is too long"),
+        query("sortOrder")
+            .optional()
+            .isIn(["asc", "desc"])
+            .withMessage("sortOrder must be 'asc' or 'desc'"),
+    ],
+    feedback: [
+        objectId("id"),
+        body("value")
+            .isIn(["helpful", "not_helpful"])
+            .withMessage("Value must be 'helpful' or 'not_helpful'"),
+    ],
+    linkKB: [
+        objectId("id"),
+        body("kbArticleId")
+            .isMongoId()
+            .withMessage("Please select a valid KB article"),
+    ],
+    /** Add a KB article to an incident (multi-article). */
+    addKbToIncident: [
+        objectId("id"),
+        body("kbArticleId")
+            .isMongoId()
+            .withMessage("Please select a valid KB article"),
+    ],
+    /** Remove a single KB article from an incident. */
+    removeKbFromIncident: [
+        objectId("id"),
+        param("articleId")
+            .isMongoId()
+            .withMessage("Invalid KB article ID"),
+    ],
+    /**
+     * List of KB articles searchable for incident linking, always scoped to a
+     * category so cross-category articles are never returned.
+     */
+    listKbForIncident: [
+        objectId("id"),
+        query("search").optional().trim().isLength({ max: 140 }).withMessage("Search term is too long"),
+    ],
+};
+const submitSurveyValidator =
+ [
+    body("rating")
+        .exists()
+        .withMessage("Rating is required")
+        .isInt({ min: 1, max: 5 })
+        .withMessage("Rating must be between 1 and 5"),
+
+    body("comments")
+        .optional({ nullable: true })
+        .isString()
+        .withMessage("Comments must be a string")
+        .trim()
+        .isLength({ max: 5000 })
+        .withMessage("Comments cannot exceed 5000 characters"),
+];
 module.exports = {
     authValidators,
     userValidators,
@@ -473,5 +686,9 @@ module.exports = {
     incidentLinkValidator,
     problemValidators,
     knownErrorValidators,
-    problemRcaValidators
+    problemRcaValidators,
+    actionItemValidators,
+    knowledgeBaseArticleValidators,
+    submitSurveyValidator
 };
+

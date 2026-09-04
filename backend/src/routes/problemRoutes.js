@@ -7,6 +7,7 @@ const {
     problemValidators,
     knownErrorValidators,
     problemRcaValidators,
+    knowledgeBaseArticleValidators,
 } = require("../validators");
 
 const {
@@ -22,6 +23,8 @@ const {
     listKnownErrors,
     getKnownError,
     suggestProblemFromIncident,
+    linkKBArticle,
+    unlinkKBArticle,
 } = require("../controllers/problemController");
 
 const {
@@ -63,6 +66,20 @@ router.patch("/:id/owner", problemValidators.updateOwner, validate, updateProble
 /** Incident <-> Problem linking (FR4-04) */
 router.post("/:id/incidents", problemValidators.linkIncident, validate, linkIncident);
 router.delete("/:id/incidents/:incidentId", problemValidators.byId, validate, unlinkIncident);
+
+/** Problem <-> KB Article linking (FR4-14) */
+router.patch(
+    "/:id/kb-article",
+    knowledgeBaseArticleValidators.linkKB,
+    validate,
+    linkKBArticle
+);
+router.delete(
+    "/:id/kb-article",
+    problemValidators.byId,
+    validate,
+    unlinkKBArticle
+);
 
 /** Problem-level RCA reusing the existing RCA controller (FR4-06) */
 router.route("/:id/rca")

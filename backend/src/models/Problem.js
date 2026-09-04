@@ -76,6 +76,15 @@ const problemSchema = new mongoose.Schema(
             default: "",
         },
 
+        // V4 - Knowledge Base linking (FR4-14). A problem may reference a
+        // published KB article. Nullable so existing problems are unaffected.
+        kbArticleId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "KnowledgeBaseArticle",
+            default: null,
+            index: true,
+        },
+
         resolvedAt: {
             type: Date,
             default: null,

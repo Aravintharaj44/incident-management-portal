@@ -42,6 +42,7 @@ import CommentThread from "../components/incidents/CommentThread";
 import AttachmentPanel from "../components/incidents/AttachmentPanel";
 import LinkedIncidentPanel from "../components/incidents/LinkedIncidentPanel";
 import RcaPanel from "../components/incidents/RcaPanel";
+import IncidentKBArticles from "../components/incidents/IncidentKBArticles";
 import { ErrorView, LoadingView } from "../components/common/StateViews";
 import {
     PRIORITY_OPTIONS,
@@ -436,6 +437,17 @@ const IncidentDetailPage = () => {
                                     key: "rca",
                                     label: "Root cause analysis",
                                     children: <RcaPanel incidentId={id} rca={rca} onChange={load} />,
+                                },
+                                {
+                                    key: "kb",
+                                    label: "KB Articles",
+                                    children: (
+                                        <IncidentKBArticles
+                                            incidentId={id}
+                                            categoryId={incident.category?._id}
+                                            canManage={isStaff}
+                                        />
+                                    ),
                                 },
                                 {
                                     key: "activity",

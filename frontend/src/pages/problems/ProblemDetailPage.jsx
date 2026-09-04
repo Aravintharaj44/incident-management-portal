@@ -33,6 +33,7 @@ import { ProblemStatusTag } from "../../components/common/Tags";
 import UserBadge from "../../components/common/UserBadge";
 import ActivityTimeline from "../../components/incidents/ActivityTimeline";
 import ProblemRcaPanel from "../../components/problems/ProblemRcaPanel";
+import KbLinkPanel from "../../components/incidents/KbLinkPanel";
 import { ErrorView, LoadingView } from "../../components/common/StateViews";
 import {
     PROBLEM_STATUS,
@@ -319,6 +320,47 @@ const ProblemDetailPage = () => {
                                             editable={editable}
                                             onChange={load}
                                         />
+                                    ),
+                                },
+                                {
+                                    key: "kb",
+                                    label: "KB Article",
+                                    children: (
+                                        <div>
+                                            {problem.kbArticleId ? (
+                                                <div style={{ padding: "8px 0" }}>
+                                                    <Text strong>
+                                                        <Link to={`/kb/${problem.kbArticleId._id}`}>
+                                                            {problem.kbArticleId.title}
+                                                        </Link>
+                                                    </Text>
+                                                    {editable && (
+                                                        <Button
+                                                            size="small"
+                                                            danger
+                                                            style={{ marginLeft: 12 }}
+                                                            onClick={async () => {
+                                                                try {
+                                                                    await problemApi.unlinkKb(id);
+                                                                    message.success("KB article unlinked");
+                                                                    load();
+                                                                } catch (err) {
+                                                                    message.error(err.message || "Failed to unlink");
+                                                                }
+                                                            }}
+                                                        >
+                                                            Unlink
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            ) : editable ? (
+                                                <KbLinkPanel problemId={id} onChange={load} />
+                                            ) : (
+                                                <Text type="secondary">
+                                                    No KB article linked. Support staff can link one.
+                                                </Text>
+                                            )}
+                                        </div>
                                     ),
                                 },
                                 {

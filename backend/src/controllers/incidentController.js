@@ -21,6 +21,7 @@ const Problem = require("../models/Problem");
 const Department = require("../models/Department");
 const DepartmentUser = require("../models/DepartmentUser");
 const OnCallSchedule  = require("../models/OnCallSchedule");
+const KBArticle = require("../models/KnowledgeBaseArticle");
 const {
     ROLES,
     STATUS,
@@ -147,6 +148,7 @@ const POPULATE = [
     { path: "assignedTo", select: "name email role" },
     { path: "department", select: "title categories isActive" },
     { path: "problemId", select: "problemNumber title status workaround" },
+    { path: "kbArticleIds", select: "title status categories authorID updatedAt" },
 ];
 
 /**
@@ -463,6 +465,37 @@ const updateIncident = asyncHandler(async (req, res) => {
                 incident.department = null;
             }
         }
+
+        // When the category changes, previously linked KB articles may no
+        // longer belong to the new category. Drop the now-invalid links so a
+        // cross-category relationship cannot silently persist. KB articles
+        // themselves are never modified or deleted.
+        if (incident.kbArticleIds && incident.kbArticleIds.length) {
+            const invalidLinks = await KBArticle.find({
+                _id: { $in: incident.kbArticleIds },
+                categories: { $nin: [categoryDoc._id] },
+            })
+                .select("title")
+                .lean();
+
+            if (invalidLinks.length) {
+                const invalidIds = invalidLinks.map((a) => String(a._id));
+                incident.kbArticleIds = incident.kbArticleIds.filter(
+                    (id) => !invalidIds.includes(String(id))
+                );
+                invalidLinks.forEach((a) => {
+                    auditEntries.push({
+                        incident: incident._id,
+                        kbArticle: a._id,
+                        action: ACTIVITY_ACTIONS.INCIDENT_KB_UNLINKED,
+                        performedBy: req.user._id,
+                        field: "kbArticleIds",
+                        oldValue: a.title,
+                        note: `Removed KB article "${a.title}" because its category no longer matches the incident's category`,
+                    });
+                });
+            }
+        }
     }
 
     if (priority !== undefined && priority !== incident.priority) {
@@ -555,6 +588,21 @@ const updateStatus = asyncHandler(async (req, res) => {
     }
 
     await incident.save();
+    notificationService.notifyStatusChanged({
+        incident,
+        oldStatus,
+        newStatus: status,
+        changedBy: req.user,
+    });
+    const enteredTerminalStatus =
+        !TERMINAL_STATUSES.includes(oldStatus) &&
+        TERMINAL_STATUSES.includes(status);
+
+    if (enteredTerminalStatus) {
+        notificationService.notifyPostResolutionSurvey({
+            incident,
+        });
+    }
     // A major incident can explicitly propagate its terminal status to children.
     if (updateLinkedChildren && TERMINAL_STATUSES.includes(status)) {
         const childLinks = await IncidentLink.find({ toIncidentId: incident._id, relationshipType: "Child-Of" }).select("fromIncidentId").lean();
@@ -605,7 +653,7 @@ const getAssignmentOptions = asyncHandler(async (req, res) => {
     if (!incident) throw ApiError.notFound("Incident not found");
     if (!permissions.canAssign(req.user, incident)) throw ApiError.forbidden("You cannot assign this incident");
 
-const departments = await Department.find({ categories: incident.category, isActive: true })
+    const departments = await Department.find({ categories: incident.category, isActive: true })
         .select("title")
         .sort({ title: 1 })
         .lean();
@@ -786,7 +834,7 @@ const assignIncident = asyncHandler(async (req, res) => {
 });
 
 /**
- * DELETE /api/v1/incidents/:id  (Admin only)
+ * DELETE /api/v1/incidents/:id (Admin only)
  * Removes the incident and everything that hangs off it.
  */
 const deleteIncident = asyncHandler(async (req, res) => {
@@ -824,6 +872,362 @@ const deleteIncident = asyncHandler(async (req, res) => {
 
     return successResponse(res, 200, `${incident.incidentNumber} was deleted`);
 });
+
+/**
+ * POST /api/v1/incidents/:id/kb-articles (FR4-14)
+ * Link a published KB article to this incident. Multiple articles allowed.
+ *
+ * Security: the KB article's category MUST match the incident's category.
+ * This is enforced on the server, never on the client.
+ */
+const addKBArticle = asyncHandler(async (req, res) => {
+    const incident = await Incident.findById(req.params.id).populate(POPULATE);
+    if (!incident) throw ApiError.notFound("Incident not found");
+    if (!permissions.canView(req.user, incident)) {
+        throw ApiError.forbidden("You do not have access to this incident");
+    }
+    if (!permissions.canLinkKB(req.user)) {
+        throw ApiError.forbidden("Only support staff can link KB articles");
+    }
+
+    const { kbArticleId } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(kbArticleId)) {
+        throw ApiError.badRequest("Invalid KB article ID");
+    }
+
+    const article = await KBArticle.findById(kbArticleId);
+    if (!article) throw ApiError.notFound("KB article not found");
+    if (article.status !== "published") {
+        throw ApiError.badRequest("Only published articles can be linked");
+    }
+
+    // Category match is mandatory: an incident may only link articles that
+    // belong to its own category. A malicious request must be rejected here.
+    if (!incident.category || String(article.categories[0] || "") !== String(incident.category._id || incident.category)) {
+        throw ApiError.badRequest("The selected KB article does not belong to this incident's category");
+    }
+
+    if (incident.kbArticleIds.some((id) => String(id) === String(article._id))) {
+        throw ApiError.badRequest("This KB article is already linked to the incident");
+    }
+
+    incident.kbArticleIds.push(article._id);
+    await incident.save();
+
+    await activityService.record({
+        incident: incident._id,
+        kbArticle: article._id,
+        action: ACTIVITY_ACTIONS.INCIDENT_KB_LINKED,
+        performedBy: req.user._id,
+        field: "kbArticleIds",
+        newValue: article.title,
+        note: `Linked KB article "${article.title}"`,
+    });
+
+    const updated = await Incident.findById(incident._id).populate(POPULATE).lean();
+    return successResponse(res, 201, `KB article linked to ${incident.incidentNumber}`, {
+        incident: decorate(updated),
+    });
+});
+
+/**
+ * GET /api/v1/incidents/:id/kb-articles (FR4-14)
+ * List all KB articles linked to this incident.
+ */
+const listKBArticles = asyncHandler(async (req, res) => {
+    const incident = await Incident.findById(req.params.id).populate(POPULATE);
+    if (!incident) throw ApiError.notFound("Incident not found");
+    if (!permissions.canView(req.user, incident)) {
+        throw ApiError.forbidden("You do not have access to this incident");
+    }
+
+    const ids = incident.kbArticleIds || [];
+    const filter = ids.length ? { _id: { $in: ids } } : { _id: { $in: [] } };
+
+    const articles = await KBArticle.find(filter)
+        .populate("categories", "name isActive")
+        .populate("authorID", "name email role")
+        .lean();
+
+    return successResponse(res, 200, "Linked KB articles retrieved", {
+        articles: articles.map((a) => ({
+            _id: a._id,
+            title: a.title,
+            status: a.status,
+            body: a.body,
+            categories: a.categories || [],
+            tags: a.tags || [],
+            authorID: a.authorID || null,
+            helpfulCount: a.helpfulCount || 0,
+            notHelpfulCount: a.notHelpfulCount || 0,
+            createdAt: a.createdAt,
+            updatedAt: a.updatedAt,
+        })),
+    });
+});
+
+/**
+ * DELETE /api/v1/incidents/:id/kb-articles/:articleId
+ * Unlink a single KB article from this incident.
+ */
+const unlinkKBArticle = asyncHandler(async (req, res) => {
+    const { id, articleId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw ApiError.badRequest("Invalid incident ID");
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(articleId)) {
+        throw ApiError.badRequest("Invalid KB article ID");
+    }
+
+    // IMPORTANT:
+    // Do NOT populate kbArticleIds here because we need the raw ObjectIds
+    // to check/remove the linked article.
+    const incident = await Incident.findById(id);
+
+    if (!incident) {
+        throw ApiError.notFound("Incident not found");
+    }
+
+    if (!permissions.canView(req.user, incident)) {
+        throw ApiError.forbidden("You do not have access to this incident");
+    }
+
+    if (!permissions.canLinkKB(req.user)) {
+        throw ApiError.forbidden("Only support staff can unlink KB articles");
+    }
+
+    const isLinked = incident.kbArticleIds?.some(
+        (kbId) => kbId.toString() === articleId
+    );
+
+    if (!isLinked) {
+        throw ApiError.notFound(
+            "This KB article is not linked to the incident"
+        );
+    }
+
+    // Get article title for activity log.
+    const article = await KBArticle.findById(articleId)
+        .select("title")
+        .lean();
+
+    const articleTitle = article?.title || "a KB article";
+
+    // Remove ONLY this article.
+    incident.kbArticleIds = incident.kbArticleIds.filter(
+        (kbId) => kbId.toString() !== articleId
+    );
+
+    await incident.save();
+
+    await activityService.record({
+        incident: incident._id,
+        kbArticle: articleId,
+        action: ACTIVITY_ACTIONS.INCIDENT_KB_UNLINKED,
+        performedBy: req.user._id,
+        field: "kbArticleIds",
+        oldValue: articleTitle,
+        note: `Unlinked KB article "${articleTitle}"`,
+    });
+
+    // Populate only AFTER saving.
+    const updated = await Incident.findById(incident._id)
+        .populate(POPULATE)
+        .lean();
+
+    return successResponse(
+        res,
+        200,
+        `KB article unlinked from ${updated.incidentNumber}`,
+        {
+            incident: decorate(updated),
+        }
+    );
+});
+
+/**
+ * GET /api/v1/incidents/:id/kb-articles/search (FR4-14)
+ * Search published KB articles that belong to this incident's category.
+ *
+ * Category filtering is enforced HERE (server-side) so a malicious client can
+ * never retrieve or link an article from an unrelated category.
+ */
+// const searchKBForIncident = asyncHandler(async (req, res) => {
+//     const incident = await Incident.findById(req.params.id).select("category").lean();
+//     if (!incident) throw ApiError.notFound("Incident not found");
+//     if (!permissions.canView(req.user, incident)) {
+//         throw ApiError.forbidden("You do not have access to this incident");
+//     }
+//     if (!permissions.canLinkKB(req.user)) {
+//         throw ApiError.forbidden("Only support staff can search KB articles for linking");
+//     }
+
+//     if (!incident.category) {
+//         return successResponse(res, 200, "No category assigned - cannot search articles", {
+//             articles: [],
+//         });
+//     }
+
+//     const filter = {
+//         status: "published",
+//         categories: { $in: [incident.category] },
+//     };
+
+//     const search = (req.query.search || "").trim();
+//     if (search) {
+//         const pattern = containsPattern(search);
+//         filter.$or = [
+//             { title: pattern },
+//             { tags: { $in: [pattern] } },
+//         ];
+//     }
+
+//     // Exclude articles already linked to this incident.
+//     const linked = await Incident.findById(incident._id).select("kbArticleIds").lean();
+//     if (linked && linked.kbArticleIds && linked.kbArticleIds.length) {
+//         filter._id = { $nin: linked.kbArticleIds };
+//     }
+
+//     const limit = Math.min(Number(req.query.limit) || 10, 25);
+
+//     const articles = await KBArticle.find(filter)
+//         .select("title status categories tags authorID")
+//         .limit(limit)
+//         .sort({ helpfulCount: -1, createdAt: -1 })
+//         .lean();
+
+//     return successResponse(res, 200, "KB articles retrieved", {
+//         articles,
+//     });
+// });
+
+// return successResponse(res, 200, `${incident.incidentNumber} was deleted`);
+// });
+
+
+const searchKBForIncident = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    // Validate incident ID first.
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw ApiError.badRequest("Invalid incident ID");
+    }
+
+    // Get the incident category and linked KB article IDs.
+    const incident = await Incident.findById(id)
+        .select("category kbArticleIds")
+        .lean();
+
+    if (!incident) {
+        throw ApiError.notFound("Incident not found");
+    }
+
+    if (!permissions.canView(req.user, incident)) {
+        throw ApiError.forbidden("You do not have access to this incident");
+    }
+
+    if (!permissions.canLinkKB(req.user)) {
+        throw ApiError.forbidden(
+            "Only support staff can search KB articles for linking"
+        );
+    }
+
+    // Incident must have a category.
+    if (!incident.category) {
+        return successResponse(
+            res,
+            200,
+            "No category assigned - cannot search articles",
+            {
+                articles: [],
+            }
+        );
+    }
+
+    /*
+     * Build the base filter.
+     *
+     * KBArticle.categories is:
+     *
+     * categories: [ObjectId]
+     *
+     * Therefore we can directly match the incident category ObjectId.
+     */
+    const filter = {
+        status: "published",
+        deletedAt: null,
+        categories: incident.category,
+    };
+
+    /*
+     * Search is optional.
+     *
+     * Empty search:
+     *   returns published KB articles for the incident category.
+     *
+     * Search text:
+     *   searches title and tags.
+     */
+    const search = String(req.query.search || "").trim();
+
+    if (search.length > 0) {
+        const pattern = containsPattern(search);
+
+        filter.$or = [
+            {
+                title: pattern,
+            },
+            {
+                tags: pattern,
+            },
+        ];
+    }
+
+    /*
+     * Exclude KB articles that are already linked to this incident.
+     */
+    if (Array.isArray(incident.kbArticleIds) && incident.kbArticleIds.length > 0) {
+        filter._id = {
+            $nin: incident.kbArticleIds,
+        };
+    }
+
+    /*
+     * Limit results.
+     */
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+
+    const limit =
+        Number.isFinite(requestedLimit) && requestedLimit > 0
+            ? Math.min(requestedLimit, 25)
+            : 10;
+
+    /*
+     * Fetch matching KB articles.
+     */
+    const articles = await KBArticle.find(filter)
+        .select("title status categories tags authorID helpfulCount notHelpfulCount createdAt updatedAt")
+        .populate("categories", "_id name isActive")
+        .populate("authorID", "_id name email role")
+        .sort({
+            helpfulCount: -1,
+            createdAt: -1,
+        })
+        .limit(limit)
+        .lean();
+
+    return successResponse(
+        res,
+        200,
+        "KB articles retrieved",
+        {
+            articles,
+        }
+    );
+});
+
 
 /**
  * GET /api/v1/incidents/export/csv  (FR-12)
@@ -906,7 +1310,7 @@ const linkProblem = asyncHandler(async (req, res) => {
         const firstIncident = await Incident.findOne({ problemId: problem._id }).select("category").lean();
         if (firstIncident && firstIncident.category) {
             problem.category = firstIncident.category;
-            await problem.save().catch(() => {});
+            await problem.save().catch(() => { });
         }
     }
 
@@ -975,6 +1379,10 @@ module.exports = {
     exportIncidents,
     linkProblem,
     unlinkProblem,
+    addKBArticle,
+    listKBArticles,
+    unlinkKBArticle,
+    searchKBForIncident,
     // Exported for reuse by the dashboard controller.
     buildIncidentFilter,
 };

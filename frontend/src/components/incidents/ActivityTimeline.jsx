@@ -1,5 +1,6 @@
 import { Empty, Timeline, Tooltip, Typography } from "antd";
 import {
+    BookOutlined,
     DisconnectOutlined,
     EditOutlined,
     FileAddOutlined,
@@ -38,6 +39,16 @@ const ACTION_META = {
     problem_owner_changed: { icon: <UserSwitchOutlined />, color: "green", label: "changed the problem owner" },
     incident_problem_linked: { icon: <LinkOutlined />, color: "purple", label: "linked this to a problem" },
     incident_problem_unlinked: { icon: <DisconnectOutlined />, color: "grey", label: "removed this from a problem" },
+    // V4 - Knowledge Base (FR4-11..15)
+    kb_article_created: { icon: <PlusCircleOutlined />, color: "blue", label: "created a KB article" },
+    kb_article_updated: { icon: <EditOutlined />, color: "blue", label: "updated a KB article" },
+    kb_article_published: { icon: <BookOutlined />, color: "green", label: "published a KB article" },
+    kb_article_linked: { icon: <LinkOutlined />, color: "purple", label: "linked a KB article" },
+    kb_article_unlinked: { icon: <DisconnectOutlined />, color: "grey", label: "unlinked a KB article" },
+    kb_article_feedback: { icon: <BookOutlined />, color: "cyan", label: "rated a KB article" },
+    // V4 - Incident KB linking (FR4-14)
+    incident_kb_article_linked: { icon: <LinkOutlined />, color: "purple", label: "linked a KB article" },
+    incident_kb_article_unlinked: { icon: <DisconnectOutlined />, color: "grey", label: "unlinked a KB article" },
 };
 
 const ActivityTimeline = ({ activity = [] }) => {
