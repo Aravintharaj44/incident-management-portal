@@ -4,6 +4,7 @@ const authRoutes = require("./authRoutes");
 const userRoutes = require("./userRoutes");
 const categoryRoutes = require("./categoryRoutes");
 const incidentRoutes = require("./incidentRoutes");
+const ticketRoutes = require("./ticketRoutes");
 const commentRoutes = require("./commentRoutes");
 const attachmentRoutes = require("./attachmentRoutes");
 const dashboardRoutes = require("./dashboardRoutes");
@@ -13,6 +14,7 @@ const problemRoutes = require("./problemRoutes");
 const actionItemRoutes = require("./actionItemRoutes");
 const KnowlegdgeBaseArticle = require('./knowledgeBaseArticleRoutes');
 const surveyRoutes = require("./surveyRoutes");
+const oauthRoutes = require("./oauthRoutes");
 
 /**
  * Single mount point for the whole API. app.js only has to mount this one
@@ -24,6 +26,7 @@ router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
 router.use("/categories", categoryRoutes);
 router.use("/incidents", incidentRoutes);
+router.use("/tickets", ticketRoutes);
 router.use("/comments", commentRoutes);
 router.use("/attachments", attachmentRoutes);
 router.use("/dashboard", dashboardRoutes);
@@ -34,4 +37,5 @@ router.use("/known-errors", problemRoutes.kedb);
 router.use("/action-items", actionItemRoutes);
 router.use("/kba",KnowlegdgeBaseArticle);
 router.use("/surveys", surveyRoutes);
+router.use("/oauth", oauthRoutes);
 module.exports = router;

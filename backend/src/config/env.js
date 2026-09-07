@@ -29,6 +29,19 @@ const env = {
     jwtSecret: process.env.JWT_SECRET,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
 
+    // FR5-02 - OAuth 2.0 client-credentials flow for the public REST API.
+    // Access tokens are signed with a *separate* secret from the portal JWTs so
+    // the two token types cannot satisfy each other. In development the OAuth
+    // secret falls back to JWT_SECRET; in production it must be set to its own
+    // long random value (enforced in validateEnv below).
+    oauth: {
+        accessTokenExpiresIn: toInt(process.env.OAUTH_ACCESS_TOKEN_EXPIRES_IN, 3600),
+        issuer: process.env.OAUTH_TOKEN_ISSUER || "incident-portal-api",
+        audience: process.env.OAUTH_TOKEN_AUDIENCE || "incident-portal-api",
+        accessTokenSecret:
+            process.env.OAUTH_ACCESS_TOKEN_SECRET || process.env.JWT_SECRET || "",
+    },
+
     // Comma-separated list so more than one frontend origin can be allowed.
     clientUrls: (process.env.CLIENT_URL || "http://localhost:5173")
         .split(",")
@@ -112,6 +125,30 @@ const validateEnv = () => {
     if (env.isProduction && env.jwtSecret.length < 32) {
         throw new Error(
             "JWT_SECRET must be at least 32 characters long in production."
+        );
+    }
+
+    // FR5-02: in production the OAuth signing secret must be its own long
+    // random value, so an OAuth access token cannot be forged with the portal
+    // secret and vice versa.
+    if (env.isProduction) {
+        const oauthSecret = env.oauth.accessTokenSecret;
+        if (!oauthSecret || oauthSecret === "" || oauthSecret.length < 32) {
+            throw new Error(
+                "OAUTH_ACCESS_TOKEN_SECRET must be at least 32 characters long in production."
+            );
+        }
+        if (oauthSecret === env.jwtSecret) {
+            throw new Error(
+                "OAUTH_ACCESS_TOKEN_SECRET must be different from JWT_SECRET in production " +
+                "so OAuth tokens and portal tokens cannot be interchanged."
+            );
+        }
+    }
+
+    if (env.oauth.accessTokenExpiresIn < 60) {
+        throw new Error(
+            "OAUTH_ACCESS_TOKEN_EXPIRES_IN must be at least 60 seconds."
         );
     }
 

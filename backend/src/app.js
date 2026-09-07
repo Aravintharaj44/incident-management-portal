@@ -80,6 +80,10 @@ const authLimiter = rateLimit({
 app.use("/api", apiLimiter);
 app.use("/api/v1/auth/login", authLimiter);
 app.use("/api/v1/auth/register", authLimiter);
+
+// FR5-02: the OAuth token endpoint is worth brute-forcing (client secrets),
+// so it gets the same tight limiter as the login endpoints.
+app.use("/api/v1/oauth/token", authLimiter);
 app.get("/api/health", (_req, res) => {
     res.json({
         success: true,

@@ -19,8 +19,10 @@ const Problem = require("../models/Problem");
 const RootCauseAnalysis = require("../models/RootCauseAnalysis");
 const ActionItem = require("../models/ActionItem");
 const KnowledgeBaseArticle = require("../models/KnowledgeBaseArticle");
+const OAuthClient = require("../models/OAuthClient");
 
 const { ROLES, STATUS, PRIORITY, ACTIVITY_ACTIONS, PROBLEM_STATUS, ACTION_ITEM_STATUS, KBA_STATUS } = require("../constants");
+const { DEMO_OAUTH } = require("./oauthDemoData");
 
 /**
  * Seeds a realistic demo data set so the portal can be reviewed without
@@ -225,6 +227,8 @@ const clearCollections = async () => {
         Problem.deleteMany({}),
         RootCauseAnalysis.deleteMany({}),
         ActionItem.deleteMany({}),
+        KnowledgeBaseArticle.deleteMany({}),
+        OAuthClient.deleteMany({}),
     ]);
 
     logger.info("Cleared existing collections");
@@ -690,6 +694,49 @@ const seedKBArticles = async (usersByEmail, categoriesByName) => {
     logger.info(`Created ${created} KB articles`);
 };
 
+/**
+ * FR5-02 - demo OAuth clients for the public REST API.
+ *
+ * Creates a "System Integration" service-account agent plus two clients: one
+ * active (used by the E2E suite) and one revoked, so token-revocation behavior
+ * can be demonstrated. Credentials come from oauthDemoData (DEMO-ONLY, hashed
+ * at rest by the model's pre-save hook).
+ */
+const seedOAuthClients = async (usersByEmail) => {
+    let serviceAccount = usersByEmail.get(DEMO_OAUTH.serviceAccount.email);
+
+    if (!serviceAccount) {
+        serviceAccount = new User({
+            name: DEMO_OAUTH.serviceAccount.name,
+            email: DEMO_OAUTH.serviceAccount.email,
+            password: DEMO_PASSWORD,
+            role: ROLES.AGENT,
+        });
+        await serviceAccount.save();
+    }
+
+    await OAuthClient.create([
+        {
+            clientId: DEMO_OAUTH.active.clientId,
+            clientSecretHash: DEMO_OAUTH.active.clientSecret,
+            name: DEMO_OAUTH.active.name,
+            user: serviceAccount._id,
+            isActive: true,
+        },
+        {
+            clientId: DEMO_OAUTH.revoked.clientId,
+            clientSecretHash: DEMO_OAUTH.revoked.clientSecret,
+            name: DEMO_OAUTH.revoked.name,
+            user: serviceAccount._id,
+            isActive: false,
+        },
+    ]);
+
+    logger.info(
+        `Created OAuth clients for "${DEMO_OAUTH.serviceAccount.email}" (active: ${DEMO_OAUTH.active.clientId}, revoked: ${DEMO_OAUTH.revoked.clientId})`
+    );
+};
+
 const run = async () => {
     validateEnv();
     await connectDB();
@@ -716,6 +763,7 @@ const run = async () => {
     await seedProblems(usersByEmail, categoriesByName);
     await seedActionItems(usersByEmail);
     await seedKBArticles(usersByEmail, categoriesByName);
+    await seedOAuthClients(usersByEmail);
 
     // Make sure the indexes declared in the schemas actually exist, so a fresh
     // database behaves like a long-running one.
@@ -732,6 +780,7 @@ const run = async () => {
         RootCauseAnalysis.syncIndexes(),
         ActionItem.syncIndexes(),
         KnowledgeBaseArticle.syncIndexes(),
+        OAuthClient.syncIndexes(),
     ]);
 
     console.log("\n=========================================================");
@@ -740,6 +789,10 @@ const run = async () => {
     USERS.forEach((user) => {
         console.log(`  ${user.role.padEnd(14)} ${user.email.padEnd(30)} ${DEMO_PASSWORD}`);
     });
+    console.log("---------------------------------------------------------");
+    console.log("  OAuth 2.0 demo clients (FR5-02) - DEMO-ONLY credentials:");
+    console.log(`    active   ${DEMO_OAUTH.active.clientId}  /  ${DEMO_OAUTH.active.clientSecret}`);
+    console.log(`    revoked  ${DEMO_OAUTH.revoked.clientId}  /  ${DEMO_OAUTH.revoked.clientSecret}`);
     console.log("=========================================================\n");
 
     await disconnectDB();
