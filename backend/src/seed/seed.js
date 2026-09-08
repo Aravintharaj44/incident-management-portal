@@ -695,12 +695,13 @@ const seedKBArticles = async (usersByEmail, categoriesByName) => {
 };
 
 /**
- * FR5-02 - demo OAuth clients for the public REST API.
+ * FR5-02/FR5-03 - demo OAuth clients for the public REST API.
  *
- * Creates a "System Integration" service-account agent plus two clients: one
- * active (used by the E2E suite) and one revoked, so token-revocation behavior
- * can be demonstrated. Credentials come from oauthDemoData (DEMO-ONLY, hashed
- * at rest by the model's pre-save hook).
+ * Creates a "System Integration" service-account agent plus four clients:
+ * one active with full ticket scopes (bound to the admin account for the
+ * E2E suite), a read-only client, a contacts-only client, and one revoked
+ * client so revocation behavior can be demonstrated.  Credentials come from
+ * oauthDemoData (DEMO-ONLY, hashed at rest by the model's pre-save hook).
  */
 const seedOAuthClients = async (usersByEmail) => {
     let serviceAccount = usersByEmail.get(DEMO_OAUTH.serviceAccount.email);
@@ -715,12 +716,33 @@ const seedOAuthClients = async (usersByEmail) => {
         await serviceAccount.save();
     }
 
+    // The active demo client is bound to the admin so the E2E suite can
+    // exercise all operations including admin-only delete.
+    const admin = usersByEmail.get("admin@zybisys.com");
+
     await OAuthClient.create([
         {
             clientId: DEMO_OAUTH.active.clientId,
             clientSecretHash: DEMO_OAUTH.active.clientSecret,
             name: DEMO_OAUTH.active.name,
+            user: admin._id,
+            scopes: DEMO_OAUTH.active.scopes,
+            isActive: true,
+        },
+        {
+            clientId: DEMO_OAUTH.readOnly.clientId,
+            clientSecretHash: DEMO_OAUTH.readOnly.clientSecret,
+            name: DEMO_OAUTH.readOnly.name,
             user: serviceAccount._id,
+            scopes: DEMO_OAUTH.readOnly.scopes,
+            isActive: true,
+        },
+        {
+            clientId: DEMO_OAUTH.contactsRead.clientId,
+            clientSecretHash: DEMO_OAUTH.contactsRead.clientSecret,
+            name: DEMO_OAUTH.contactsRead.name,
+            user: serviceAccount._id,
+            scopes: DEMO_OAUTH.contactsRead.scopes,
             isActive: true,
         },
         {
@@ -728,12 +750,13 @@ const seedOAuthClients = async (usersByEmail) => {
             clientSecretHash: DEMO_OAUTH.revoked.clientSecret,
             name: DEMO_OAUTH.revoked.name,
             user: serviceAccount._id,
+            scopes: DEMO_OAUTH.revoked.scopes,
             isActive: false,
         },
     ]);
 
     logger.info(
-        `Created OAuth clients for "${DEMO_OAUTH.serviceAccount.email}" (active: ${DEMO_OAUTH.active.clientId}, revoked: ${DEMO_OAUTH.revoked.clientId})`
+        `Created 4 OAuth clients for "${DEMO_OAUTH.serviceAccount.email}" (admin-bound: ${DEMO_OAUTH.active.clientId})`
     );
 };
 
@@ -790,9 +813,15 @@ const run = async () => {
         console.log(`  ${user.role.padEnd(14)} ${user.email.padEnd(30)} ${DEMO_PASSWORD}`);
     });
     console.log("---------------------------------------------------------");
-    console.log("  OAuth 2.0 demo clients (FR5-02) - DEMO-ONLY credentials:");
-    console.log(`    active   ${DEMO_OAUTH.active.clientId}  /  ${DEMO_OAUTH.active.clientSecret}`);
-    console.log(`    revoked  ${DEMO_OAUTH.revoked.clientId}  /  ${DEMO_OAUTH.revoked.clientSecret}`);
+    console.log("  OAuth 2.0 demo clients (FR5-02/FR5-03) - DEMO-ONLY credentials:");
+    console.log(`    active     ${DEMO_OAUTH.active.clientId}  /  ${DEMO_OAUTH.active.clientSecret}`);
+    console.log(`               scopes: ${DEMO_OAUTH.active.scopes.join(", ")}`);
+    console.log(`    read-only  ${DEMO_OAUTH.readOnly.clientId}  /  ${DEMO_OAUTH.readOnly.clientSecret}`);
+    console.log(`               scopes: ${DEMO_OAUTH.readOnly.scopes.join(", ")}`);
+    console.log(`    contacts   ${DEMO_OAUTH.contactsRead.clientId}  /  ${DEMO_OAUTH.contactsRead.clientSecret}`);
+    console.log(`               scopes: ${DEMO_OAUTH.contactsRead.scopes.join(", ")}`);
+    console.log(`    revoked    ${DEMO_OAUTH.revoked.clientId}  /  ${DEMO_OAUTH.revoked.clientSecret}`);
+    console.log(`               scopes: ${DEMO_OAUTH.revoked.scopes.join(", ")}`);
     console.log("=========================================================\n");
 
     await disconnectDB();

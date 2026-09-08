@@ -80,11 +80,18 @@ and never interchangeable with portal JWTs. Create clients with
                 oauth2: {
                     type: "oauth2",
                     description:
-                        "OAuth 2.0 client-credentials grant (FR5-02). Obtain a token from POST /api/v1/oauth/token using the client id and client secret.",
+                        "OAuth 2.0 client-credentials grant (FR5-02/FR5-03). Obtain a token from POST /api/v1/oauth/token using the client id and client secret. The granted scopes determine which endpoints the token can access.",
                     flows: {
                         clientCredentials: {
                             tokenUrl: "/api/v1/oauth/token",
-                            scopes: {},
+                            scopes: {
+                                "tickets.READ": "Read access to tickets (GET /tickets)",
+                                "tickets.WRITE": "Write access to tickets (POST/PUT/PATCH/DELETE /tickets)",
+                                "tickets.ALL": "Full access to tickets (implies READ + WRITE)",
+                                "contacts.READ": "Read access to contacts (FR5-04)",
+                                "agents.READ": "Read access to agents (FR5-05)",
+                                "articles.READ": "Read access to articles (FR5-07)",
+                            },
                         },
                     },
                 },
@@ -128,14 +135,15 @@ and never interchangeable with portal JWTs. Create clients with
                         access_token: { type: "string", description: "The short-lived bearer access token." },
                         token_type: { type: "string", example: "Bearer" },
                         expires_in: { type: "integer", description: "Lifetime of the token in seconds.", example: 3600 },
+                        scope: { type: "string", description: "Space-delimited list of granted scopes.", example: "tickets.READ tickets.WRITE" },
                     },
-                    required: ["access_token", "token_type", "expires_in"],
+                    required: ["access_token", "token_type", "expires_in", "scope"],
                 },
                 OAuthErrorResponse: {
                     type: "object",
                     description: "OAuth 2.0 error response (RFC 6749 section 5.2).",
                     properties: {
-                        error: { type: "string", enum: ["invalid_request", "invalid_client", "unsupported_grant_type"] },
+                        error: { type: "string", enum: ["invalid_request", "invalid_client", "unsupported_grant_type", "invalid_scope"] },
                         error_description: { type: "string" },
                     },
                     required: ["error"],
@@ -1010,8 +1018,8 @@ and never interchangeable with portal JWTs. Create clients with
             { name: "Categories", description: "Incident category master list." },
             { name: "Departments", description: "Support departments and their memberships." },
             { name: "Incidents", description: "Incident lifecycle, workflow, export, RCA, comments, attachments and links." },
-            { name: "Tickets", description: "Zoho Desk-compatible ticket API (FR5-01) - an adapter over the existing Incident resource. Accepts a portal login JWT OR an OAuth 2.0 access token (FR5-02)." },
-            { name: "OAuth", description: "OAuth 2.0 token endpoint (FR5-02) for the public REST API." },
+            { name: "Tickets", description: "Zoho Desk-compatible ticket API (FR5-01/FR5-03) - an adapter over the existing Incident resource. Accepts a portal login JWT OR an OAuth 2.0 access token with the required scope." },
+            { name: "OAuth", description: "OAuth 2.0 token endpoint (FR5-02/FR5-03) for the public REST API. Supports scoped access control." },
             { name: "Problems", description: "Problem Management and the Known Error Database (V4 - FR4). Includes problem<->incident linking and problem-scoped RCA." },
             { name: "Comments", description: "Comment editing/deletion." },
             { name: "Attachments", description: "Attachment download and deletion." },
@@ -1814,7 +1822,7 @@ and never interchangeable with portal JWTs. Create clients with
                     tags: ["OAuth"],
                     summary: "Obtain an access token (client-credentials grant)",
                     description:
-                        "Public. FR5-02 client-credentials flow for the public REST API. Authenticate with the client_id/client_secret via HTTP Basic (preferred) and/or the `client_id`/`client_secret` fields. Returns a short-lived bearer token usable with the Tickets endpoints. Errors follow RFC 6749 (`error`/`error_description`).",
+                        "Public. FR5-02/FR5-03 client-credentials flow for the public REST API. Authenticate with the client_id/client_secret via HTTP Basic (preferred) and/or the `client_id`/`client_secret` fields. Optionally supply a `scope` parameter (space-delimited) to request specific scopes; the client may only request scopes it has been assigned. Returns a short-lived bearer token usable with the Tickets endpoints. Errors follow RFC 6749 (`error`/`error_description`).",
                     security: [],
                     requestBody: {
                         required: true,
@@ -1827,7 +1835,7 @@ and never interchangeable with portal JWTs. Create clients with
                                         grant_type: { type: "string", enum: ["client_credentials"], description: "Only client_credentials is supported." },
                                         client_id: { type: "string", description: "Client id (alternative to HTTP Basic)." },
                                         client_secret: { type: "string", description: "Client secret (alternative to HTTP Basic)." },
-                                        scope: { type: "string", description: "Reserved for FR5-03 - accepted but not yet enforced." },
+                                        scope: { type: "string", description: "Space-delimited list of requested scopes (FR5-03). If omitted, all of the client's assigned scopes are granted. Case-sensitive." },
                                     },
                                 },
                             },
@@ -1846,8 +1854,8 @@ and never interchangeable with portal JWTs. Create clients with
                         },
                     },
                     responses: {
-                        200: { description: "A bearer access token.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthTokenResponse" } } } },
-                        400: { description: "Invalid request - missing or unsupported grant_type.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthErrorResponse" } } } },
+                        200: { description: "A bearer access token with granted scopes.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthTokenResponse" } } } },
+                        400: { description: "Invalid request - missing/unsupported grant_type or invalid_scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthErrorResponse" } } } },
                         401: { description: "Client credentials are missing or invalid.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthErrorResponse" } } } },
                     },
                 },
@@ -1857,11 +1865,11 @@ and never interchangeable with portal JWTs. Create clients with
             // Tickets (FR5-01) - Zoho Desk-compatible adapter over Incidents
             // ==================================================================
             "/tickets": {
-                security: [{ bearerAuth: [] }, { oauth2: [] }],
                 get: {
                     tags: ["Tickets"],
                     summary: "List tickets (paginated, limit/from)",
-                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token). Returns incidents as Zoho Desk-compatible tickets, honouring the same visibility and filter rules as the incident list. Pagination uses `from`/`limit`.",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.READ` or `tickets.ALL` scope). Returns incidents as Zoho Desk-compatible tickets, honouring the same visibility and filter rules as the incident list. Pagination uses `from`/`limit`.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.READ"] }],
                     parameters: [
                         { name: "from", in: "query", required: false, schema: { type: "integer", minimum: 0 }, description: "Zero-based offset (default 0)." },
                         { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page (default 10, capped at 100)." },
@@ -1878,12 +1886,14 @@ and never interchangeable with portal JWTs. Create clients with
                     responses: {
                         200: { description: "Paginated list of tickets.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { tickets: { type: "array", items: { $ref: "#/components/schemas/Ticket" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Insufficient OAuth scope (valid token but missing `tickets.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
                 },
                 post: {
                     tags: ["Tickets"],
                     summary: "Create a ticket",
-                    description: "Requires authentication. Creates an Incident from the ticket representation. The requester is always the signed-in caller (never read from the body).",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.WRITE` or `tickets.ALL` scope). Creates an Incident from the ticket representation. The requester is always the signed-in caller (never read from the body).",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.WRITE"] }],
                     requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TicketCreateRequest" } } } },
                     responses: {
                         201: { description: "Ticket created.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { ticket: { $ref: "#/components/schemas/Ticket" } } } } } } } },
@@ -1894,16 +1904,16 @@ and never interchangeable with portal JWTs. Create clients with
                 },
             },
             "/tickets/{id}": {
-                security: [{ bearerAuth: [] }, { oauth2: [] }],
                 get: {
                     tags: ["Tickets"],
                     summary: "Get a ticket",
-                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token). Returns one incident mapped to a ticket, with requester, assignee, category and department populated. A user cannot view a ticket they are not allowed to see.",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.READ` or `tickets.ALL` scope). Returns one incident mapped to a ticket, with requester, assignee, category and department populated. A user cannot view a ticket they are not allowed to see.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.READ"] }],
                     parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident/ticket id (Mongo ObjectId)." }],
                     responses: {
                         200: { description: "Ticket retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { ticket: { $ref: "#/components/schemas/Ticket" } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
-                        403: { description: "You do not have access to this ticket.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "You do not have access to this ticket, or insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
@@ -1911,7 +1921,8 @@ and never interchangeable with portal JWTs. Create clients with
                 put: {
                     tags: ["Tickets"],
                     summary: "Replace a ticket (supported fields)",
-                    description: "Requires authentication. Full replacement of the supported descriptive fields: subject, description, category and priority. Status, assignment, department and requester are workflow concerns and are deliberately NOT editable here. Requires all supported fields to be supplied.",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.WRITE` or `tickets.ALL` scope). Full replacement of the supported descriptive fields: subject, description, category and priority. Status, assignment, department and requester are workflow concerns and are deliberately NOT editable here. Requires all supported fields to be supplied.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.WRITE"] }],
                     parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident/ticket id (Mongo ObjectId)." }],
                     requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TicketUpdateRequest" } } } },
                     responses: {
@@ -1926,7 +1937,8 @@ and never interchangeable with portal JWTs. Create clients with
                 patch: {
                     tags: ["Tickets"],
                     summary: "Update a ticket (supported fields)",
-                    description: "Requires authentication. Partial update - only the supplied supported fields change. Never allows arbitrary Mongo fields, _id/createdAt/audit manipulation, reporter spoofing, or assignment/department changes.",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.WRITE` or `tickets.ALL` scope). Partial update - only the supplied supported fields change. Never allows arbitrary Mongo fields, _id/createdAt/audit manipulation, reporter spoofing, or assignment/department changes.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.WRITE"] }],
                     parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident/ticket id (Mongo ObjectId)." }],
                     requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TicketUpdateRequest" } } } },
                     responses: {
@@ -1941,7 +1953,8 @@ and never interchangeable with portal JWTs. Create clients with
                 delete: {
                     tags: ["Tickets"],
                     summary: "Delete a ticket (admin)",
-                    description: "Requires authentication and the `admin` role. Permanently removes the underlying incident and its child records (same cleanup rules as incident deletion).",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.ALL` scope) and the `admin` role. Permanently removes the underlying incident and its child records (same cleanup rules as incident deletion).",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.ALL"] }],
                     parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident/ticket id (Mongo ObjectId)." }],
                     responses: {
                         200: { description: "Ticket deleted.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponse" } } } },

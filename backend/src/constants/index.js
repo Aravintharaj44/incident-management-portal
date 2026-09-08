@@ -220,6 +220,23 @@ const SURVEY_STATUS = {
     COMPLETED: "completed",
 }
 const SURVEY_STATUS_VALUE = Object.values(SURVEY_STATUS);
+
+/**
+ * FR5-03 - OAuth 2.0 scope constants for the public REST API.
+ * Every scope string used across the application is defined here once so
+ * controllers, middleware, models and validators never drift apart.
+ */
+const OAUTH_SCOPES = {
+    TICKETS_READ: "tickets.READ",
+    TICKETS_WRITE: "tickets.WRITE",
+    TICKETS_ALL: "tickets.ALL",
+    CONTACTS_READ: "contacts.READ",
+    AGENTS_READ: "agents.READ",
+    ARTICLES_READ: "articles.READ",
+};
+
+const OAUTH_SCOPE_VALUES = Object.values(OAUTH_SCOPES);
+
 module.exports = {
     ROLES,
     ROLE_VALUES,
@@ -248,4 +265,6 @@ module.exports = {
     KBA_STATUS_VALUE,
     SURVEY_STATUS_VALUE,
     SURVEY_STATUS,
+    OAUTH_SCOPES,
+    OAUTH_SCOPE_VALUES,
 };

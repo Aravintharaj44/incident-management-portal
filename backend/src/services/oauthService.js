@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { env } = require("../config/env");
+const { OAUTH_SCOPES } = require("../constants");
 
 const SALT_ROUNDS = 10;
 
@@ -33,7 +34,7 @@ const verifyClientSecret = (secret, hash) => bcrypt.compare(secret, hash);
  * The token is deliberately distinct from a portal login JWT: it is signed
  * with the OAuth secret (never the portal secret), carries `typ`/`client_id`
  * instead of `id`, and pins issuer + audience which the verify side checks.
- * `scope` is preserved verbatim for FR5-03 but is NOT enforced yet.
+ * `scope` is a space-delimited string of granted scopes (FR5-03).
  */
 const issueAccessToken = ({
     client,
@@ -68,6 +69,33 @@ const verifyAccessToken = (token) =>
         audience: env.oauth.audience,
     });
 
+// ------------------------------------------------------------------
+// FR5-03 - Scope helpers
+// ------------------------------------------------------------------
+
+/**
+ * Splits a raw scope string (space-delimited per RFC 6749 §3.3) into an
+ * array of individual scope tokens. Drops empty strings from leading/
+ * trailing/internal whitespace.
+ */
+const parseScopes = (raw) => {
+    if (typeof raw !== "string") return [];
+    return raw.trim().split(/\s+/).filter(Boolean);
+};
+
+/**
+ * Returns true when `granted` (an array of scope strings on the token)
+ * satisfies the `required` scope. The `tickets.ALL` scope implies both
+ * `tickets.READ` and `tickets.WRITE`.
+ */
+const scopeSatisfies = (required, granted) => {
+    const set = new Set(granted);
+    if (set.has(required)) return true;
+    if (required === OAUTH_SCOPES.TICKETS_READ && set.has(OAUTH_SCOPES.TICKETS_ALL)) return true;
+    if (required === OAUTH_SCOPES.TICKETS_WRITE && set.has(OAUTH_SCOPES.TICKETS_ALL)) return true;
+    return false;
+};
+
 module.exports = {
     ACCESS_TOKEN_TYPE,
     CLIENT_CREDENTIALS_GRANT,
@@ -77,4 +105,6 @@ module.exports = {
     verifyClientSecret,
     issueAccessToken,
     verifyAccessToken,
+    parseScopes,
+    scopeSatisfies,
 };

@@ -81,6 +81,11 @@ const errorHandler = (error, req, res, _next) => {
         errors: normalized ? normalized.errors : null,
     };
 
+    // FR5-03 - include the error code when present (e.g. "insufficient_scope").
+    if (normalized && normalized.code) {
+        body.error = normalized.code;
+    }
+
     // Raw stacks are a development aid only - never expose them in production.
     if (!env.isProduction && statusCode >= 500) {
         body.stack = error.stack;

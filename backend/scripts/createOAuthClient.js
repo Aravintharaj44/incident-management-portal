@@ -4,11 +4,8 @@ const { connectDB, disconnectDB } = require("../src/config/db");
 const { env, validateEnv } = require("../src/config/env");
 const User = require("../src/models/User");
 const OAuthClient = require("../src/models/OAuthClient");
-const {
-    generateClientId,
-    generateClientSecret,
-} = require("../src/services/oauthService");
-const { ROLES, ROLE_VALUES } = require("../src/constants");
+const { generateClientId, generateClientSecret } = require("../src/services/oauthService");
+const { ROLES, ROLE_VALUES, OAUTH_SCOPE_VALUES } = require("../src/constants");
 
 const args = process.argv.slice(2);
 
@@ -19,9 +16,10 @@ const readArg = (name) => {
 
 const name = readArg("name");
 let role = readArg("role") || ROLES.AGENT;
+const scopesRaw = readArg("scopes");
 
 if (!name) {
-    console.error("Usage: npm run oauth:create-client -- --name \"Client Name\" [--role support_agent|admin]");
+    console.error('Usage: npm run oauth:create-client -- --name "Client Name" --scopes "tickets.READ tickets.WRITE" [--role support_agent|admin]');
     process.exit(1);
 }
 
@@ -32,6 +30,20 @@ if (!ROLE_VALUES.includes(role)) {
 
 if (role === ROLES.USER) {
     console.error("An OAuth client must map to a service account with staff privileges (support_agent or admin).");
+    process.exit(1);
+}
+
+if (!scopesRaw) {
+    console.error('Missing required --scopes. Example: --scopes "tickets.READ tickets.WRITE"');
+    console.error(`Allowed values: ${OAUTH_SCOPE_VALUES.join(", ")}`);
+    process.exit(1);
+}
+
+const scopes = scopesRaw.trim().split(/\s+/);
+const invalidScopes = scopes.filter((s) => !OAUTH_SCOPE_VALUES.includes(s));
+if (invalidScopes.length > 0) {
+    console.error(`Invalid scope(s): ${invalidScopes.join(", ")}`);
+    console.error(`Allowed values: ${OAUTH_SCOPE_VALUES.join(", ")}`);
     process.exit(1);
 }
 
@@ -61,6 +73,7 @@ const run = async () => {
         name,
         user: serviceAccount._id,
         grantTypes: ["client_credentials"],
+        scopes,
         isActive: true,
     });
 
@@ -69,6 +82,7 @@ const run = async () => {
     console.log("---------------------------------------------------------");
     console.log(`  name        : ${name}`);
     console.log(`  client_id   : ${clientId}`);
+    console.log(`  scopes      : ${scopes.join(", ")}`);
     console.log(`  service user: ${serviceAccount.email} (${serviceAccount.role})`);
     console.log("  client_secret (shown once, do not share or commit):");
     console.log(`  ${clientSecret}`);

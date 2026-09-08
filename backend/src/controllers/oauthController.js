@@ -2,10 +2,12 @@ const OAuthClient = require("../models/OAuthClient");
 const asyncHandler = require("../utils/asyncHandler");
 const logger = require("../utils/logger");
 const { env } = require("../config/env");
+const { OAUTH_SCOPE_VALUES } = require("../constants");
 const {
     CLIENT_CREDENTIALS_GRANT,
     verifyClientSecret,
     issueAccessToken,
+    parseScopes,
 } = require("../services/oauthService");
 
 /**
@@ -84,9 +86,39 @@ const token = asyncHandler(async (req, res) => {
         return oauthError(res, 401, "invalid_client", "Client credentials are invalid.");
     }
 
-    const scope = typeof req.body.scope === "string" ? req.body.scope.trim().slice(0, 255) : "";
+    const rawScope = req.body && req.body.scope;
 
-    const accessToken = issueAccessToken({ client, scope });
+    // FR5-03 - scope validation.
+    // No scope param  -> default = all of the client's assigned scopes.
+    // Scope param     -> every requested scope must be both recognized and
+    //                     assigned to this client; no partial grants.
+    let grantedScopes;
+    if (rawScope === undefined || rawScope === null) {
+        grantedScopes = client.scopes || [];
+    } else if (typeof rawScope !== "string" || !rawScope.trim()) {
+        return oauthError(res, 400, "invalid_scope", "The scope parameter is malformed.");
+    } else {
+        const requested = parseScopes(rawScope);
+        if (requested.length === 0) {
+            return oauthError(res, 400, "invalid_scope", "The scope parameter is malformed.");
+        }
+
+        const clientScopeSet = new Set(client.scopes || []);
+        for (const s of requested) {
+            if (!OAUTH_SCOPE_VALUES.includes(s) || !clientScopeSet.has(s)) {
+                return oauthError(
+                    res,
+                    400,
+                    "invalid_scope",
+                    `The scope "${s}" is not allowed for this client.`
+                );
+            }
+        }
+        grantedScopes = requested;
+    }
+
+    const scopeString = grantedScopes.join(" ");
+    const accessToken = issueAccessToken({ client, scope: scopeString });
 
     logger.event("oauth_token_issued", { clientId: client.clientId });
 
@@ -94,6 +126,7 @@ const token = asyncHandler(async (req, res) => {
         access_token: accessToken,
         token_type: "Bearer",
         expires_in: env.oauth.accessTokenExpiresIn,
+        scope: scopeString,
     });
 });
 

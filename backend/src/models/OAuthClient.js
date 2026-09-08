@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const { OAUTH_SCOPE_VALUES } = require("../constants");
 
 const SALT_ROUNDS = 10;
 
@@ -60,6 +61,17 @@ const oauthClientSchema = new mongoose.Schema(
             default: ["client_credentials"],
         },
 
+        // FR5-03 - OAuth scopes this client may request. Each token issued
+        // for this client can only carry scopes present in this list.
+        scopes: {
+            type: [String],
+            enum: {
+                values: OAUTH_SCOPE_VALUES,
+                message: "Unsupported OAuth scope",
+            },
+            default: [],
+        },
+
         // Setting this to false revokes the client: it can no longer obtain
         // new tokens (enforced at the token endpoint).
         isActive: {
@@ -104,6 +116,7 @@ oauthClientSchema.methods.toPublicJSON = function toPublicJSON() {
         name: this.name,
         user: this.user,
         grantTypes: this.grantTypes,
+        scopes: this.scopes,
         isActive: this.isActive,
         createdAt: this.createdAt,
     };
