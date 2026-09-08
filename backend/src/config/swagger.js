@@ -1009,6 +1009,106 @@ and never interchangeable with portal JWTs. Create clients with
                         performance: { type: "array", items: { type: "object", properties: { agentId: { type: "string" }, name: { type: "string" }, resolved: { type: "integer" }, averageHours: { type: "number" }, slaCompliance: { type: "number" } } } },
                     },
                 },
+                // ------------------------------------------------------------------
+                // On-Call scheduling (FR4-21..25)
+                // ------------------------------------------------------------------
+                EscalationStep: {
+    type: "object",
+    description: "One rung of the escalation chain, in order.",
+    properties: {
+        step: { type: "integer", description: "Order in the chain: 1 = Primary On-Call, 2 = Team Lead, 3 = Admin/Manager, etc.", example: 1 },
+        user: { type: "string", description: "User id (populated with name/email/role in responses).", example: "64b8f0c2e4a9d1f2a3b4c5d6" },
+    },
+    required: ["step", "user"],
+                },
+OnCallSchedule: {
+    type: "object",
+    description: "A configured on-call shift with its escalation chain.",
+    properties: {
+        _id: { type: "string" },
+        department: { type: "string", description: "Department id (populated with name in responses)." },
+        category: { type: "string", nullable: true, description: "Optional category id (populated with name in responses); when set, this schedule only applies to incidents in this category." },
+        startTime: { type: "string", format: "date-time" },
+        endTime: { type: "string", format: "date-time" },
+        ackWindowMinutes: { type: "integer", description: "Minutes an assignee has to acknowledge before escalation (FR4-23).", default: 15, example: 15 },
+        escalationChain: { type: "array", items: { $ref: "#/components/schemas/EscalationStep" } },
+        createdBy: { type: "string", description: "User id (populated in responses)." },
+        isActive: { type: "boolean", default: true },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+    },
+},
+OnCallRosterCreateRequest: {
+    type: "object",
+    required: ["department", "startTime", "endTime", "escalationChain"],
+    properties: {
+        department: { type: "string", description: "Department id.", example: "64b8f0c2e4a9d1f2a3b4c5d8" },
+        category: { type: "string", nullable: true, description: "Optional category id to scope this schedule to." },
+        startTime: { type: "string", format: "date-time" },
+        endTime: { type: "string", format: "date-time" },
+        ackWindowMinutes: { type: "integer", description: "Optional; defaults to 15.", example: 15 },
+        escalationChain: {
+            type: "array",
+            minItems: 1,
+            description: "Ordered list of escalation steps; must not be empty.",
+            items: {
+                type: "object",
+                required: ["step", "user"],
+                properties: {
+                    step: { type: "integer", example: 1 },
+                    user: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d6" },
+                },
+            },
+        },
+    },
+},
+
+// ------------------------------------------------------------------
+// Webhook intake (FR4-17)
+// ------------------------------------------------------------------
+WebhookIngestResponse: {
+    type: "object",
+    description: "Response for a processed monitoring webhook. Always returns 2xx to the sending vendor so it does not retry indefinitely; failures are captured in the Intake queue instead of surfaced as an HTTP error.",
+    properties: {
+        success: { type: "boolean" },
+        message: { type: "string", example: "Incident created from webhook alert." },
+        data: {
+            type: "object",
+            nullable: true,
+            properties: {
+                incidentId: { type: "string", nullable: true },
+                created: { type: "boolean", nullable: true, description: "True if a new incident was created; false if an existing incident was updated (duplicate alert)." },
+            },
+        },
+    },
+},
+
+// ------------------------------------------------------------------
+// Intake failure review (FR4-20)
+// ------------------------------------------------------------------
+IntakeLog: {
+    type: "object",
+    description: "A malformed or unparseable email/webhook payload captured for manual review.",
+    properties: {
+        _id: { type: "string" },
+        source: { type: "string", enum: ["Email", "Webhook"], example: "Webhook" },
+        vendor: { type: "string", description: "Monitoring vendor that sent the payload, when the source is Webhook.", example: "datadog" },
+        status: { type: "string", enum: ["Failed", "Reviewed", "Resolved", "flagged", "failed", "reviewed", "resolved"], description: "Note: values are currently written in mixed casing by different code paths (e.g. new failures are stored as lowercase `flagged`).", example: "flagged" },
+        errorReason: { type: "string", maxLength: 2000, example: "Unsupported vendor \"foo\"." },
+        rawPayload: { type: "object", description: "The original payload body, stored as-is for troubleshooting." },
+        resolvedIncidentId: { type: "string", nullable: true, description: "Incident id, set once this entry is resolved into an incident." },
+        reviewedBy: { type: "string", nullable: true, description: "User id (populated in responses)." },
+        reviewedAt: { type: "string", format: "date-time", nullable: true },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+    },
+},
+IntakeResolveRequest: {
+    type: "object",
+    properties: {
+        resolvedIncidentId: { type: "string", nullable: true, description: "Optional; the incident this failed payload was manually turned into.", example: "64b8f0c2e4a9d1f2a3b4c5d9" },
+    },
+},
             },
         },
         security: [{ bearerAuth: [] }],
@@ -1026,6 +1126,9 @@ and never interchangeable with portal JWTs. Create clients with
             { name: "Dashboard", description: "Aggregations and analytics." },
             { name: "Notifications", description: "In-app notifications." },
             { name: "Meta", description: "Health and reference data." },
+            { name: "OnCall", description: "On-call roster scheduling, escalation chains and incident acknowledgement (FR4-21..25)." },
+            { name: "Webhooks", description: "Inbound monitoring-alert webhook intake (FR4-17). Verified by HMAC signature, not a bearer token." },
+            { name: "Intake", description: "Manual review queue for email/webhook payloads that failed automatic ingestion (FR4-20)." },
         ],
         paths: {
             // ==================================================================
@@ -2546,6 +2649,200 @@ and never interchangeable with portal JWTs. Create clients with
                     },
                 },
             },
+            // ==================================================================
+// On-Call (FR4-21..25)
+// ==================================================================
+"/on-call/roster": {
+    post: {
+        tags: ["OnCall"],
+        summary: "Create an on-call roster (FR4-21)",
+        description: "Requires authentication and the `admin` role. Configures a shift window, optional category scope, acknowledgement window and escalation chain.",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/OnCallRosterCreateRequest" } } } },
+        responses: {
+            201: { description: "Roster configured.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { schedule: { $ref: "#/components/schemas/OnCallSchedule" } } } } } } } },
+            400: { description: "Missing department, shift window, or an empty escalation chain.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+},
+"/on-call/calendar": {
+    get: {
+        tags: ["OnCall"],
+        summary: "Get the on-call calendar view (FR4-25)",
+        description: "Requires authentication. Open to any signed-in role (Admin, Support Agent, or End User). Returns active schedules, optionally filtered by department and/or date range.",
+        parameters: [
+            { name: "department", in: "query", required: false, schema: { type: "string" }, description: "Filter by department id." },
+            { name: "start", in: "query", required: false, schema: { type: "string", format: "date-time" }, description: "Include schedules overlapping on/after this time. Must be supplied together with `end`." },
+            { name: "end", in: "query", required: false, schema: { type: "string", format: "date-time" }, description: "Include schedules overlapping on/before this time. Must be supplied together with `start`." },
+        ],
+        responses: {
+            200: { description: "Active schedules matching the filters.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { schedules: { type: "array", items: { $ref: "#/components/schemas/OnCallSchedule" } } } } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+},
+"/on-call/incidents/{id}/acknowledge": {
+    post: {
+        tags: ["OnCall"],
+        summary: "Acknowledge an incident (FR4-23)",
+        description: "Requires authentication. Not currently role- or assignment-restricted beyond being signed in - any authenticated user can acknowledge any incident id. Stamps `acknowledgedAt`/`acknowledgedBy` and sets `isAcknowledged: true`, intended to stop further escalation.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident id (Mongo ObjectId)." }],
+        responses: {
+            200: { description: "Incident acknowledged.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/Incident" } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            404: { description: "Incident not found.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string", example: "Incident not found" } } } } } },
+            500: { description: "Server error (including an internal-consistency check failing to persist the acknowledgement).", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } } },
+        },
+    },
+},
+
+// ==================================================================
+// Webhooks (FR4-17)
+// ==================================================================
+// ==================================================================
+// Webhooks (FR4-17)
+// ==================================================================
+"/webhooks/monitoring/{vendor}": {
+    // This route is mounted at app.use("/api/webhooks", ...) in app.js,
+    // registered BEFORE express.json() so it can verify the raw request
+    // body. It sits outside the /api/v1 base every other path in this spec
+    // uses, so this path-level `servers` override points Swagger UI at the
+    // correct absolute URL for this one path only.
+    servers: [{ url: "/api", description: "Non-versioned API root (webhooks only)" }],
+    post: {
+        tags: ["Webhooks"],
+        summary: "Receive a monitoring-tool alert webhook",
+        description:
+            "Public endpoint (no bearer token) intended for server-to-server calls from monitoring vendors. Mounted outside the versioned `/api/v1` API, at `/api/webhooks/monitoring/{vendor}`, and registered before the global JSON body parser so its signature can be verified against the raw request bytes. On success, normalizes the vendor-specific payload into a common alert shape (title, description, priority, a vendor-scoped dedupe key) and creates an Incident, or updates the existing one if the dedupe key matches a prior alert. Malformed or unparseable payloads are NOT rejected with an error status; they are accepted and logged to the Intake queue for manual review, so the sending vendor does not endlessly retry.",
+        security: [],
+        parameters: [
+            { name: "vendor", in: "path", required: true, schema: { type: "string", enum: ["datadog", "alertmanager", "generic"] }, description: "The sending monitoring tool. Any other value is rejected with 400. Each vendor expects a different payload shape - see the request body examples." },
+        ],
+        requestBody: {
+            required: true,
+            description: "Raw vendor-specific alert payload, shape depends on the `vendor` path parameter.",
+            content: {
+                "application/json": {
+                    schema: { type: "object" },
+                    examples: {
+                        datadog: {
+                            summary: "Datadog monitor webhook",
+                            description: "Standard Datadog webhook integration payload. Requires at least `alert_id` or `title`. `alert_type` maps to priority (critical/error/warning/info); anything unrecognized defaults to medium.",
+                            value: {
+                                title: "CPU usage alert on web-01",
+                                body: "CPU usage has exceeded 90% for 5 minutes.",
+                                alert_type: "error",
+                                alert_id: "12345",
+                                alert_scope: "host:web-01",
+                            },
+                        },
+                        alertmanager: {
+                            summary: "Prometheus Alertmanager webhook_config",
+                            description: "Standard Alertmanager webhook_config payload. Requires a `fingerprint` on the firing alert, or a top-level `groupKey`, for deduplication. `labels.severity` maps to priority.",
+                            value: {
+                                status: "firing",
+                                groupKey: "{}:{alertname=\"HighMemoryUsage\"}",
+                                commonLabels: { alertname: "HighMemoryUsage", severity: "critical" },
+                                commonAnnotations: { summary: "Memory usage above threshold", description: "Node memory usage is above 95%." },
+                                alerts: [
+                                    {
+                                        status: "firing",
+                                        fingerprint: "a1b2c3d4",
+                                        labels: { alertname: "HighMemoryUsage", severity: "critical" },
+                                        annotations: { summary: "Memory usage above threshold", description: "Node memory usage is above 95%." },
+                                    },
+                                ],
+                            },
+                        },
+                        generic: {
+                            summary: "Generic fallback shape",
+                            description: "For any monitoring tool without a dedicated adapter. Requires `title`/`name`/`summary` AND `dedupeKey`/`id`/`alertId`. `severity`/`priority` maps to incident priority.",
+                            value: {
+                                title: "Disk space low on db-02",
+                                description: "Available disk space below 10%.",
+                                severity: "high",
+                                dedupeKey: "db-02-disk-space",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        responses: {
+            200: { description: "An existing incident was updated (duplicate alert, matched by dedupe key).", content: { "application/json": { schema: { $ref: "#/components/schemas/WebhookIngestResponse" } } } },
+            201: { description: "A new incident was created from the alert.", content: { "application/json": { schema: { $ref: "#/components/schemas/WebhookIngestResponse" } } } },
+            202: { description: "Payload accepted but could not be parsed (e.g. missing a required identifying field for the vendor) or turned into an incident; flagged in the Intake queue for manual review.", content: { "application/json": { schema: { $ref: "#/components/schemas/WebhookIngestResponse" } } } },
+            400: { description: "Unsupported `vendor` path value.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" } } } } } },
+            401: { description: "Missing or invalid webhook signature." },
+        },
+    },
+},
+
+// ==================================================================
+// Intake (FR4-20)
+// ==================================================================
+"/intake/failures": {
+    get: {
+        tags: ["Intake"],
+        summary: "List intake failures (paginated)",
+        description: "Requires authentication. Effectively Admin-only in practice (the route also lists a `Manager`/`manager` role, but no such role currently exists in the system, so only `admin` accounts can pass).",
+        parameters: [
+            { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Filter by status. NOTE: passing `failed` is mapped server-side to the literal `Flagged`, which does not match any stored value (failures are stored as lowercase `flagged`) - this filter currently returns no results for that case. Pass the exact stored value (e.g. `flagged`, `Resolved`, `Reviewed`) to filter reliably." },
+            { name: "source", in: "query", required: false, schema: { type: "string", enum: ["Email", "Webhook"] }, description: "Filter by intake source." },
+            { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1 }, description: "Page number (default 1)." },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1 }, description: "Items per page (default 20)." },
+        ],
+        responses: {
+            200: { description: "Paginated list of intake failures.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/IntakeLog" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string", example: "Forbidden: You do not have permission to access this resource." } } } } } },
+        },
+    },
+},
+"/intake/failures/{id}": {
+    get: {
+        tags: ["Intake"],
+        summary: "Get an intake failure",
+        description: "Requires authentication. Effectively Admin-only (see note on the list endpoint).",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "IntakeLog id (Mongo ObjectId)." }],
+        responses: {
+            200: { description: "Intake failure retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/IntakeLog" } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } } },
+            404: { description: "Intake log not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+},
+"/intake/failures/{id}/resolve": {
+    patch: {
+        tags: ["Intake"],
+        summary: "Mark an intake failure resolved",
+        description: "Requires authentication. Effectively Admin-only (see note on the list endpoint). Optionally links the failure to the incident it was manually turned into.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "IntakeLog id (Mongo ObjectId)." }],
+        requestBody: { required: false, content: { "application/json": { schema: { $ref: "#/components/schemas/IntakeResolveRequest" } } } },
+        responses: {
+            200: { description: "Marked resolved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/IntakeLog" } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } } },
+            404: { description: "Intake log not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+},
+"/intake/failures/{id}/dismiss": {
+    patch: {
+        tags: ["Intake"],
+        summary: "Dismiss an intake failure",
+        description: "Requires authentication. Effectively Admin-only (see note on the list endpoint). Marks the entry as reviewed without linking it to any incident.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "IntakeLog id (Mongo ObjectId)." }],
+        responses: {
+            200: { description: "Marked reviewed/dismissed.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/IntakeLog" } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } } },
+            404: { description: "Intake log not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+},
         },
     },
     // Scan our own JSDoc comments if any route files are annotated. None are

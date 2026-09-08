@@ -17,6 +17,8 @@ function getConfig() {
     INTAKE_IMAP_USER,
     INTAKE_IMAP_PASSWORD,
     INTAKE_SENDER_ALLOWLIST,
+    INTAKE_SINCE_DATE,
+    INTAKE_LABEL,
   } = process.env;
 
   if (!INTAKE_IMAP_HOST || !INTAKE_IMAP_USER || !INTAKE_IMAP_PASSWORD) {
@@ -28,6 +30,15 @@ function getConfig() {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
+  // Gmail X-GM-RAW "after:" expects YYYY/MM/DD. Default per requirement:
+  // ignore everything before 05/09/2026 (5 Sept 2026), process from there on.
+  const sinceDate = INTAKE_SINCE_DATE || '2026/09/05';
+  if (!/^\d{4}\/\d{2}\/\d{2}$/.test(sinceDate)) {
+    logger.error(
+      `[emailIntakeService] INTAKE_SINCE_DATE "${sinceDate}" is not in YYYY/MM/DD format — falling back to default.`
+    );
+  }
+
   return {
     host: INTAKE_IMAP_HOST,
     port: Number(INTAKE_IMAP_PORT || 993),
@@ -37,6 +48,8 @@ function getConfig() {
       pass: INTAKE_IMAP_PASSWORD,
     },
     allowlist,
+    sinceDate: /^\d{4}\/\d{2}\/\d{2}$/.test(sinceDate) ? sinceDate : '2026/09/05',
+    label: INTAKE_LABEL || 'INC',
   };
 }
 
@@ -46,15 +59,29 @@ function isSenderAllowed(fromAddress, allowlist) {
 }
 
 /**
- * Poll the monitored mailbox once
+ * Applies the "INC" Gmail label and marks the message as Seen.
+ * Gmail exposes labels over IMAP via the X-GM-LABELS extension (not as
+ * regular flags/keywords). imapflow supports this directly through the
+ * `useLabels: true` option on messageFlagsAdd — no copy-to-mailbox trick
+ * needed, and the label is auto-created by Gmail if it doesn't exist yet.
  */
-async function pollInbox() {
-  const config = getConfig();
-  if (!config) {
-    logger.warn('[emailIntakeService] IMAP not configured — skipping poll. Set INTAKE_IMAP_* env vars.');
-    return { processed: 0, failed: 0 };
-  }
+async function applyIncLabelAndMarkSeen(client, uid, label) {
+  await client.messageFlagsAdd(uid, [label], { uid: true, useLabels: true });
+  await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
+}
 
+/**
+ * Builds a fresh ImapFlow client with the shared connection options.
+ * Pulled out so both the read and write-back phases of pollInbox use
+ * identical settings without duplicating the constructor call.
+ *
+ * socketTimeout bumped 30000 -> 60000: the original single-connection
+ * design was holding the IMAP socket open (idle) while slow Mongo work
+ * (User lookup, Incident.create, activity log) ran in between fetch and
+ * flag-update, and the server was timing it out around the 30s mark.
+ * The 3-phase split below is the real fix; this is extra headroom.
+ */
+function createImapClient(config, label) {
   const client = new ImapFlow({
     host: config.host,
     port: config.port,
@@ -65,7 +92,7 @@ async function pollInbox() {
     emitLogs: false,
     connectionTimeout: 15000,
     greetingTimeout: 15000,
-    socketTimeout: 30000,
+    socketTimeout: 60000,
     tls: {
       rejectUnauthorized: false,
     },
@@ -73,46 +100,115 @@ async function pollInbox() {
 
   // Catch socket errors on client instance to prevent Node process termination
   client.on('error', (err) => {
-    logger.error(`[emailIntakeService] IMAP Socket Error prevented: ${err.message}`);
+    logger.error(`[emailIntakeService] IMAP Socket Error prevented (${label}): ${err.message}`);
   });
+
+  return client;
+}
+
+/**
+ * Poll the monitored mailbox once, using server-side SEARCH to only
+ * fetch messages that actually match our intake conditions:
+ *   - after the configured cutoff date
+ *   - unread
+ *   - not already labelled INC
+ *
+ * Split into 3 phases so the IMAP connection is never left open/idle
+ * while the slow Mongo work (Phase 2) runs — that idle gap is what was
+ * causing repeated "Socket timeout" errors and the label/Seen step to
+ * never complete:
+ *   Phase 1 (READ)       — connect, SEARCH, fetch matching messages into memory, disconnect.
+ *   Phase 2 (PROCESS)    — no IMAP connection open; parse + create incidents.
+ *   Phase 3 (WRITE-BACK) — connect again briefly, label + mark Seen only the successes, disconnect.
+ */
+async function pollInbox() {
+  const config = getConfig();
+  if (!config) {
+    logger.warn('[emailIntakeService] IMAP not configured — skipping poll. Set INTAKE_IMAP_* env vars.');
+    return { processed: 0, failed: 0 };
+  }
 
   let processed = 0;
   let failed = 0;
 
-  try {
-    await client.connect();
+  // ---- Phase 1: READ ----
+  let messages = [];
+  const readClient = createImapClient(config, 'read phase');
 
-    const lock = await client.getMailboxLock('INBOX');
+  try {
+    await readClient.connect();
+    const lock = await readClient.getMailboxLock('INBOX');
     try {
-      // Pass uid: true to retrieve exact message UID alongside sequence numbers
-      for await (const message of client.fetch({ seen: false }, { envelope: true, source: true, uid: true })) {
-        try {
-          await handleRawEmail(message.source, config.allowlist);
-          processed += 1;
-        } catch (err) {
-          failed += 1;
-          await intakeService.logFailure({
-            source: INTAKE_SOURCE.EMAIL,
-            errorReason: err.message,
-            rawPayload: message.envelope ? JSON.stringify(message.envelope) : 'unavailable',
-          });
-          logger.error(`[emailIntakeService] Failed to process message: ${err.message}`);
-        } finally {
-          // Use UID-based flag update to ensure read status persists across network reconnections
-          try {
-            await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
-          } catch (flagErr) {
-            logger.error(`[emailIntakeService] Could not set \\Seen flag for UID ${message.uid}: ${flagErr.message}`);
-          }
-        }
+      // Gmail-specific raw search (X-GM-RAW): after cutoff date, unread,
+      // and not already labelled INC. Returns only matching UIDs — no
+      // full-mailbox scan.
+      const gmailQuery = `after:${config.sinceDate} is:unread -label:${config.label}`;
+      const uids = await readClient.search({ gmraw: gmailQuery }, { uid: true });
+
+      if (uids && uids.length > 0) {
+        // Pull matching messages fully into memory now, while the
+        // connection is fresh, instead of streaming them with an async
+        // iterator that would keep the socket open through Phase 2.
+        messages = await readClient.fetchAll(uids, { envelope: true, source: true, uid: true }, { uid: true });
       }
     } finally {
       lock.release();
     }
-
-    await client.logout();
+    await readClient.logout();
   } catch (err) {
-    logger.error(`[emailIntakeService] IMAP connection error: ${err.message}`);
+    logger.error(`[emailIntakeService] IMAP connection error (read phase): ${err.message}`);
+    return { processed: 0, failed: 0 };
+  }
+
+  if (messages.length === 0) {
+    logger.info('[emailIntakeService] Poll complete: 0 matching messages.');
+    return { processed: 0, failed: 0 };
+  }
+
+  // ---- Phase 2: PROCESS (no IMAP connection open) ----
+  const succeededUids = [];
+
+  for (const message of messages) {
+    try {
+      await handleRawEmail(message.source, config.allowlist);
+      processed += 1;
+      succeededUids.push(message.uid);
+    } catch (err) {
+      failed += 1;
+      await intakeService.logFailure({
+        source: INTAKE_SOURCE.EMAIL,
+        errorReason: err.message,
+        rawPayload: message.envelope ? JSON.stringify(message.envelope) : 'unavailable',
+      });
+      logger.error(`[emailIntakeService] Failed to process message UID ${message.uid}: ${err.message}`);
+      // Intentionally left unread and unlabelled so it's retried on the next poll.
+    }
+  }
+
+  // ---- Phase 3: WRITE-BACK ----
+  if (succeededUids.length > 0) {
+    const writeClient = createImapClient(config, 'write-back phase');
+
+    try {
+      await writeClient.connect();
+      const lock = await writeClient.getMailboxLock('INBOX');
+      try {
+        for (const uid of succeededUids) {
+          try {
+            await applyIncLabelAndMarkSeen(writeClient, uid, config.label);
+          } catch (labelErr) {
+            logger.error(
+              `[emailIntakeService] Incident created but failed to label/mark UID ${uid}: ${labelErr.message}`
+            );
+          }
+        }
+      } finally {
+        lock.release();
+      }
+      await writeClient.logout();
+    } catch (err) {
+      logger.error(`[emailIntakeService] IMAP connection error (write-back phase): ${err.message}`);
+    }
   }
 
   logger.info(`[emailIntakeService] Poll complete: ${processed} processed, ${failed} failed.`);
