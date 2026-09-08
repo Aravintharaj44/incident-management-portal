@@ -1110,6 +1110,28 @@ IntakeResolveRequest: {
     },
 },
             },
+            examples: {
+                NotAuthenticatedExample: {
+                    summary: "Not authenticated",
+                    value: { success: false, message: "Authentication required", errors: null },
+                },
+                ForbiddenExample: {
+                    summary: "Forbidden - wrong role",
+                    value: { success: false, message: "Forbidden: You do not have permission to access this resource.", errors: null },
+                },
+                NotFoundExample: {
+                    summary: "Resource not found",
+                    value: { success: false, message: "Resource not found", errors: null },
+                },
+                ValidationErrorExample: {
+                    summary: "Validation failed",
+                    value: {
+                        success: false,
+                        message: "Validation failed",
+                        errors: [{ field: "title", message: "Title must be at least 5 characters" }],
+                    },
+                },
+            },
         },
         security: [{ bearerAuth: [] }],
         tags: [
@@ -2661,8 +2683,8 @@ IntakeResolveRequest: {
         responses: {
             201: { description: "Roster configured.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { schedule: { $ref: "#/components/schemas/OnCallSchedule" } } } } } } } },
             400: { description: "Missing department, shift window, or an empty escalation chain.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
-            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
-            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
+            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/ForbiddenExample" } } } } },
         },
     },
 },
@@ -2678,7 +2700,7 @@ IntakeResolveRequest: {
         ],
         responses: {
             200: { description: "Active schedules matching the filters.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { schedules: { type: "array", items: { $ref: "#/components/schemas/OnCallSchedule" } } } } } } } } },
-            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
         },
     },
 },
@@ -2690,16 +2712,13 @@ IntakeResolveRequest: {
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident id (Mongo ObjectId)." }],
         responses: {
             200: { description: "Incident acknowledged.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/Incident" } } } } } },
-            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
             404: { description: "Incident not found.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string", example: "Incident not found" } } } } } },
             500: { description: "Server error (including an internal-consistency check failing to persist the acknowledgement).", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } } },
         },
     },
 },
 
-// ==================================================================
-// Webhooks (FR4-17)
-// ==================================================================
 // ==================================================================
 // Webhooks (FR4-17)
 // ==================================================================
@@ -2786,7 +2805,7 @@ IntakeResolveRequest: {
     get: {
         tags: ["Intake"],
         summary: "List intake failures (paginated)",
-        description: "Requires authentication. Effectively Admin-only in practice (the route also lists a `Manager`/`manager` role, but no such role currently exists in the system, so only `admin` accounts can pass).",
+        description: "Requires authentication. Effectively Admin-only in practice (the route also lists a `Manager`/`manager` role, but no such role currently exists in the system, so only `admin` accounts can pass). This router is also separately mounted at `/api/intake` (outside `/api/v1`) in app.js; both paths reach the same handlers.",
         parameters: [
             { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Filter by status. NOTE: passing `failed` is mapped server-side to the literal `Flagged`, which does not match any stored value (failures are stored as lowercase `flagged`) - this filter currently returns no results for that case. Pass the exact stored value (e.g. `flagged`, `Resolved`, `Reviewed`) to filter reliably." },
             { name: "source", in: "query", required: false, schema: { type: "string", enum: ["Email", "Webhook"] }, description: "Filter by intake source." },
@@ -2795,8 +2814,8 @@ IntakeResolveRequest: {
         ],
         responses: {
             200: { description: "Paginated list of intake failures.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/IntakeLog" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
-            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
-            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string", example: "Forbidden: You do not have permission to access this resource." } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
+            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/ForbiddenExample" } } } } },
         },
     },
 },
@@ -2808,9 +2827,9 @@ IntakeResolveRequest: {
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "IntakeLog id (Mongo ObjectId)." }],
         responses: {
             200: { description: "Intake failure retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/IntakeLog" } } } } } },
-            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
-            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } } },
-            404: { description: "Intake log not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
+            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/ForbiddenExample" } } } } },
+            404: { description: "Intake log not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotFoundExample" } } } } },
         },
     },
 },
@@ -2823,9 +2842,9 @@ IntakeResolveRequest: {
         requestBody: { required: false, content: { "application/json": { schema: { $ref: "#/components/schemas/IntakeResolveRequest" } } } },
         responses: {
             200: { description: "Marked resolved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/IntakeLog" } } } } } },
-            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
-            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } } },
-            404: { description: "Intake log not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
+            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/ForbiddenExample" } } } } },
+            404: { description: "Intake log not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotFoundExample" } } } } },
         },
     },
 },
@@ -2837,11 +2856,96 @@ IntakeResolveRequest: {
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "IntakeLog id (Mongo ObjectId)." }],
         responses: {
             200: { description: "Marked reviewed/dismissed.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { $ref: "#/components/schemas/IntakeLog" } } } } } },
-            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
-            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } } },
-            404: { description: "Intake log not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
+            403: { description: "Forbidden - requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/ForbiddenExample" } } } } },
+            404: { description: "Intake log not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotFoundExample" } } } } },
         },
     },
+},
+// ==================================================================
+// Agents Endpoints
+// ==================================================================
+"/agents": {
+    get: {
+        tags: ["Agents"],
+        summary: "List all agents",
+        description: "Retrieves a paginated list of agents. Requires OAuth2 Bearer token authentication with the 'agents.READ' scope.",
+        security: [
+            { OAuth2: ["agents.READ"] }
+        ],
+        parameters: [
+            { name: "page", in: "query", required: false, schema: { type: "integer", default: 1 }, description: "Page number" },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", default: 10 }, description: "Number of items per page" },
+            { name: "search", in: "query", required: false, schema: { type: "string" }, description: "Search term to filter agents by name or email" }
+        ],
+        responses: {
+            200: {
+                description: "List of agents retrieved successfully.",
+                content: {
+                    "application/json": {
+                        schema: {
+                            type: "object",
+                            properties: {
+                                success: { type: "boolean", example: true },
+                                data: {
+                                    type: "array",
+                                    items: { $ref: "#/components/schemas/Agent" }
+                                },
+                                pagination: { $ref: "#/components/schemas/Pagination" }
+                            }
+                        }
+                    }
+                }
+            },
+            401: { description: "Unauthorized - Invalid or missing OAuth Bearer token.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
+            403: { description: "Forbidden - Requires 'agents.READ' scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/ForbiddenExample" } } } } },
+            422: { description: "Validation failed for query parameters.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } }
+        }
+    }
+},
+"/agents/{agent_id}": {
+    get: {
+        tags: ["Agents"],
+        summary: "Get agent by ID",
+        description: "Retrieves details of a specific agent. Requires OAuth2 Bearer token authentication with the 'agents.READ' scope.",
+        security: [
+            { OAuth2: ["agents.READ"] }
+        ],
+        parameters: [
+            {
+                name: "agent_id",
+                in: "path",
+                required: true,
+                schema: { type: "string" },
+                description: "The unique identifier of the agent."
+            }
+        ],
+        responses: {
+            200: {
+                description: "Agent details retrieved successfully.",
+                content: {
+                    "application/json": {
+                        schema: {
+                            type: "object",
+                            properties: {
+                                success: { type: "boolean", example: true },
+                                data: {
+                                    type: "object",
+                                    properties: {
+                                        agent: { $ref: "#/components/schemas/Agent" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            401: { description: "Unauthorized - Invalid or missing OAuth Bearer token.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
+            403: { description: "Forbidden - Requires 'agents.READ' scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/ForbiddenExample" } } } } },
+            404: { description: "Agent not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotFoundExample" } } } } },
+            422: { description: "Validation failed for agent_id parameter.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } }
+        }
+    }
 },
         },
     },

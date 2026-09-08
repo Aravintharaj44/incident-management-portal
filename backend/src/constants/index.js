@@ -250,6 +250,9 @@ const OAUTH_SCOPES = {
     CONTACTS_READ: "contacts.READ",
     AGENTS_READ: "agents.READ",
     ARTICLES_READ: "articles.READ",
+    AGENT_READ:"agents.READ",
+    DEPARTMENTS_READ: "departments.READ",
+
 };
 
 const OAUTH_SCOPE_VALUES = Object.values(OAUTH_SCOPES);

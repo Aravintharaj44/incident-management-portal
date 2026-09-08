@@ -788,6 +788,21 @@ const run = async () => {
     await seedKBArticles(usersByEmail, categoriesByName);
     await seedOAuthClients(usersByEmail);
 
+    await seedKBArticles(usersByEmail, categoriesByName);
+    await seedOAuthClients(usersByEmail);
+
+    // ---> PASTE IT HERE <---
+    const systemUser = await User.findOneAndUpdate(
+      { email: 'rajappanrajappan982@gmail.com' },
+      {
+        email: 'rajappanrajappan982@gmail.com',
+        name: 'Automated Intake',
+        role: ROLES.AGENT,
+        password: await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    console.log('INTAKE_SYSTEM_USER_ID=', systemUser._id.toString());
     // Make sure the indexes declared in the schemas actually exist, so a fresh
     // database behaves like a long-running one.
     await Promise.all([
@@ -827,17 +842,7 @@ const run = async () => {
     await disconnectDB();
 };
 
-const systemUser = await User.findOneAndUpdate(
-  { email: 'rajappanrajappan982@gmail.com' },
-  {
-    email: 'rajappanrajappan982@gmail.com',
-    name: 'Automated Intake',
-    role: ROLES.AGENT, // "support_agent" — matches your real ROLES enum
-    password: await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10), // random, unused login
-  },
-  { upsert: true, new: true, setDefaultsOnInsert: true }
-);
-console.log('INTAKE_SYSTEM_USER_ID=', systemUser._id.toString());
+// console.log('INTAKE_SYSTEM_USER_ID=', systemUser._id.toString());
 
 run()
     .then(() => process.exit(0))
