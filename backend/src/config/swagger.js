@@ -31,10 +31,11 @@ Tokens are passed as an \`Authorization: Bearer <token>\` header. Roles are
 \`admin\`, \`support_agent\` and \`user\`; role requirements are noted per
 endpoint and enforced by the backend regardless of the UI.
 
-### OAuth 2.0 (FR5-02) - public ticket and contact APIs
+### OAuth 2.0 (FR5-02) - public Tickets, Contacts and Articles APIs
 
-External systems can call the Tickets (\`/tickets\`) and Contacts (\`/contacts\`,
-FR5-04) endpoints with a machine token instead of a portal login:
+External systems can call the Tickets (\`/tickets\`), Contacts (\`/contacts\`,
+FR5-04) and Knowledge Base Articles (\`/articles\`, FR5-07) endpoints with a
+machine token instead of a portal login:
 
 1. \`POST /api/v1/oauth/token\` with \`grant_type=client_credentials\` and the
    client credentials (HTTP Basic or \`client_id\`/\`client_secret\` fields).
@@ -650,6 +651,44 @@ which endpoints a token can call - the Contacts API currently requires
                 },
 
                 // ------------------------------------------------------------------
+                // Articles (FR5-07)
+                // ------------------------------------------------------------------
+                Article: {
+                    type: "object",
+                    description: "A publicly-visible Knowledge Base article. Reuses the existing KnowledgeBaseArticle model - only `published` articles are exposed. Internal Mongo/audit fields (`_id`, `authorID`, `deletedAt`, vote metadata) are never returned.",
+                    properties: {
+                        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d9" },
+                        title: { type: "string", example: "VPN Connection Drops After 5 Minutes" },
+                        body: { type: "string", description: "The article body (the model field is `body`; there is no `content`/`summary` field)." },
+                        status: { type: "string", enum: ["draft", "published", "retired", "archived"], example: "published", description: "Always `published` on this surface - non-published articles are not returned." },
+                        tags: { type: "array", items: { type: "string" }, example: ["vpn", "network", "firewall"] },
+                        categories: { type: "array", description: "The article's categories (populated from the shared Category model).", items: { $ref: "#/components/schemas/ArticleCategory" } },
+                        author: { $ref: "#/components/schemas/ArticleAuthor" },
+                        helpfulCount: { type: "integer", example: 5 },
+                        notHelpfulCount: { type: "integer", example: 1 },
+                        createdAt: { type: "string", format: "date-time" },
+                        updatedAt: { type: "string", format: "date-time" },
+                    },
+                    required: ["title", "status"],
+                },
+                ArticleCategory: {
+                    type: "object",
+                    description: "A category reference populated from the Category model.",
+                    properties: {
+                        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d8" },
+                        name: { type: "string", example: "Network" },
+                    },
+                },
+                ArticleAuthor: {
+                    type: "object",
+                    description: "The article author, populated from the shared User model.",
+                    properties: {
+                        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d7" },
+                        name: { type: "string", example: "Rahul Verma" },
+                    },
+                },
+
+                // ------------------------------------------------------------------
                 // Comments
                 // ------------------------------------------------------------------
                 Comment: {
@@ -1038,6 +1077,7 @@ which endpoints a token can call - the Contacts API currently requires
             { name: "Departments", description: "Support departments and their memberships." },
             { name: "Incidents", description: "Incident lifecycle, workflow, export, RCA, comments, attachments and links." },
             { name: "Tickets", description: "Zoho Desk-compatible ticket API (FR5-01/FR5-03) - an adapter over the existing Incident resource. Accepts a portal login JWT OR an OAuth 2.0 access token with the required scope." },
+            { name: "Articles", description: "Public Knowledge Base Articles API (FR5-07) - read-only, over the existing KnowledgeBaseArticle resource. Returns only published articles to callers with the `articles.READ` scope." },
             { name: "OAuth", description: "OAuth 2.0 token endpoint (FR5-02/FR5-03) for the public REST API. Supports scoped access control." },
             { name: "Problems", description: "Problem Management and the Known Error Database (V4 - FR4). Includes problem<->incident linking and problem-scoped RCA." },
             { name: "Comments", description: "Comment editing/deletion." },
@@ -2050,6 +2090,47 @@ which endpoints a token can call - the Contacts API currently requires
                         404: { description: "Contact not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         409: { description: "A contact with that email already exists.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
+            // Articles (FR5-07) - public Knowledge Base Articles API
+            // ==================================================================
+            "/articles": {
+                get: {
+                    tags: ["Articles"],
+                    summary: "List published Knowledge Base articles (paginated, with search/category filters)",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `articles.READ` scope). Returns only published Knowledge Base articles using the existing KnowledgeBaseArticle model. Drafts, retired, archived and soft-deleted articles are never exposed. Search reuses the existing KB search behaviour (case-insensitive match on title, body and tags).",
+                    security: [{ bearerAuth: [] }, { oauth2: ["articles.READ"] }],
+                    parameters: [
+                        { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1 }, description: "Page number (default 1)." },
+                        { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page (default 10, capped at 100)." },
+                        { name: "search", in: "query", required: false, schema: { type: "string", maxLength: 140 }, description: "Case-insensitive search on article title, body or tags." },
+                        { name: "categoryId", in: "query", required: false, schema: { type: "string" }, description: "Filter to articles in the given category (Mongo ObjectId)." },
+                        { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
+                    ],
+                    responses: {
+                        200: { description: "Paginated list of published articles.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Article" } }, pagination: { type: "object", properties: { page: { type: "integer" }, limit: { type: "integer" }, total: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Insufficient OAuth scope (valid token but missing `articles.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid query parameters.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/articles/{id}": {
+                get: {
+                    tags: ["Articles"],
+                    summary: "Get one published Knowledge Base article",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `articles.READ` scope). Returns a single published article. Drafts, retired, archived and soft-deleted articles are not exposed - they return 404. An invalid id returns a validation error.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["articles.READ"] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Article id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "Article retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { article: { $ref: "#/components/schemas/Article" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Article not found (or not published).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
                 },
             },
