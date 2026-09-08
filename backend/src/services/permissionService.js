@@ -26,11 +26,6 @@ const isAgent = (user) => user.role === ROLES.AGENT;
 const isReporterOf = (user, incident) => idOf(incident.reportedBy) === idOf(user._id);
 const isAssigneeOf = (user, incident) => idOf(incident.assignedTo) === idOf(user._id);
 
-/**
- * Mongo filter limiting a list query to what this user is allowed to see.
- * Applied before any user-supplied filters, so it cannot be widened by a
- * crafted query string.
- */
 const visibilityFilter = (user) => {
     if (isAdmin(user) || isAgent(user)) return {};
     return { reportedBy: user._id };
@@ -137,18 +132,8 @@ const assertValidTransition = (currentStatus, nextStatus) => {
     }
 };
 
-/* --------------------------------------------------------------------------
- * V4 - RCA Action Items (FR4-07..09).
- *
- * Action items hang off an approved RCA and are a staff concern, mirroring the
- * problem-management rules: Admins and (in some cases) Support Agents may
- * manage them; an End User never gains management access.
- *
- * A Support Agent may manage an action item they own, or (as with incidents)
- * one that is still unassigned. Admins may manage every action item.
- * ------------------------------------------------------------------------ */
 
-/** Only active Admin/Support Agent users may own an action item (FR4-07). */
+/** Only active Admin/Support Agent users may own an action item (FR4-07).*/
 const canOwnActionItem = (user) => isStaff(user) && user.isActive !== false;
 
 /**
@@ -164,13 +149,6 @@ const canManageActionItem = (user, actionItem) => {
 /** Only an Admin may create/assign action items to arbitrary owners. */
 const canAssignActionItem = (user) => isAdmin(user);
 
-/* --------------------------------------------------------------------------
- * V4 - Knowledge Base (FR4-11..15).
- *
- * Staff (Admin + Support Agent) may create, edit, publish and manage KB
- * articles. All authenticated users may view published articles and submit
- * feedback. Only staff may see draft articles.
- * ------------------------------------------------------------------------ */
 
 /** Staff may create KB articles. */
 const canCreateKB = (user) => isAdmin(user) || isAgent(user);

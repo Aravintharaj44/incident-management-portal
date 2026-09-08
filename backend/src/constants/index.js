@@ -231,6 +231,7 @@ const OAUTH_SCOPES = {
     TICKETS_WRITE: "tickets.WRITE",
     TICKETS_ALL: "tickets.ALL",
     CONTACTS_READ: "contacts.READ",
+    CONTACTS_WRITE: "contacts.WRITE",
     AGENTS_READ: "agents.READ",
     ARTICLES_READ: "articles.READ",
 };
