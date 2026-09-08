@@ -137,6 +137,16 @@ const incidentSchema = new mongoose.Schema(
             index: true,
         },
 
+        // V4 - Knowledge Base linking (FR4-14). An incident may reference
+        // multiple published KB articles. Empty array so existing incidents
+        // are unaffected (MongoDB treats missing/null the same as [] for queries).
+        kbArticleIds: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "KnowledgeBaseArticle",
+            },
+        ],
+
         resolutionNote: {
             type: String,
             trim: true,
