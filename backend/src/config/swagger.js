@@ -48,6 +48,21 @@ Almost all routes are protected. To call them from Swagger UI:
 Tokens are passed as an \`Authorization: Bearer <token>\` header. Roles are
 \`admin\`, \`support_agent\` and \`user\`; role requirements are noted per
 endpoint and enforced by the backend regardless of the UI.
+
+### OAuth 2.0 (FR5-02) - public ticket API
+
+External systems can call the Tickets endpoints with a machine token instead of
+a portal login:
+
+1. \`POST /api/v1/oauth/token\` with \`grant_type=client_credentials\` and the
+   client credentials (HTTP Basic or \`client_id\`/\`client_secret\` fields).
+2. Use the returned \`access_token\` as \`Authorization: Bearer <token>\`,
+   or click **Authorize** and choose the *OAuth2* flow with your client id and
+   secret.
+
+Access tokens are short-lived (default 3600s), signed with a separate secret,
+and never interchangeable with portal JWTs. Create clients with
+\`npm run oauth:create-client\`.
 `,
         },
         servers: [
@@ -61,6 +76,24 @@ endpoint and enforced by the backend regardless of the UI.
                     type: "http",
                     scheme: "bearer",
                     bearerFormat: "JWT",
+                },
+                oauth2: {
+                    type: "oauth2",
+                    description:
+                        "OAuth 2.0 client-credentials grant (FR5-02/FR5-03). Obtain a token from POST /api/v1/oauth/token using the client id and client secret. The granted scopes determine which endpoints the token can access.",
+                    flows: {
+                        clientCredentials: {
+                            tokenUrl: "/api/v1/oauth/token",
+                            scopes: {
+                                "tickets.READ": "Read access to tickets (GET /tickets)",
+                                "tickets.WRITE": "Write access to tickets (POST/PUT/PATCH/DELETE /tickets)",
+                                "tickets.ALL": "Full access to tickets (implies READ + WRITE)",
+                                "contacts.READ": "Read access to contacts (FR5-04)",
+                                "agents.READ": "Read access to agents (FR5-05)",
+                                "articles.READ": "Read access to articles (FR5-07)",
+                            },
+                        },
+                    },
                 },
             },
             schemas: {
@@ -94,6 +127,26 @@ endpoint and enforced by the backend regardless of the UI.
                         },
                     },
                     required: ["success", "message"],
+                },
+                OAuthTokenResponse: {
+                    type: "object",
+                    description: "Standard OAuth 2.0 token response (RFC 6749 section 5.1).",
+                    properties: {
+                        access_token: { type: "string", description: "The short-lived bearer access token." },
+                        token_type: { type: "string", example: "Bearer" },
+                        expires_in: { type: "integer", description: "Lifetime of the token in seconds.", example: 3600 },
+                        scope: { type: "string", description: "Space-delimited list of granted scopes.", example: "tickets.READ tickets.WRITE" },
+                    },
+                    required: ["access_token", "token_type", "expires_in", "scope"],
+                },
+                OAuthErrorResponse: {
+                    type: "object",
+                    description: "OAuth 2.0 error response (RFC 6749 section 5.2).",
+                    properties: {
+                        error: { type: "string", enum: ["invalid_request", "invalid_client", "unsupported_grant_type", "invalid_scope"] },
+                        error_description: { type: "string" },
+                    },
+                    required: ["error"],
                 },
                 Pagination: {
                     type: "object",
@@ -489,6 +542,95 @@ endpoint and enforced by the backend regardless of the UI.
                 },
 
                 // ------------------------------------------------------------------
+                // Tickets (FR5-01) - Zoho Desk-compatible adapter over Incidents
+                // ------------------------------------------------------------------
+                Ticket: {
+                    type: "object",
+                    description: "A Zoho Desk-compatible ticket. This is an adapter representation of an Incident; the Incident remains the source of truth.",
+                    properties: {
+                        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d9" },
+                        ticketNumber: { type: "string", nullable: true, description: "The incident reference number.", example: "INC-000001" },
+                        subject: { type: "string", minLength: 5, maxLength: 140, example: "Shared printer is offline" },
+                        description: { type: "string", minLength: 10, maxLength: 5000, example: "The printer on floor 3 is not responding to print jobs." },
+                        status: { type: "string", enum: ["new", "in_progress", "on_hold", "resolved", "closed"], example: "new" },
+                        priority: { type: "string", enum: ["low", "medium", "high", "critical"], example: "medium" },
+                        requester: {
+                            type: "object",
+                            nullable: true,
+                            description: "The reporter (populated).",
+                            properties: {
+                                id: { type: "string" },
+                                name: { type: "string" },
+                                email: { type: "string" },
+                                role: { type: "string", enum: ["admin", "support_agent", "user"] },
+                            },
+                        },
+                        assignee: {
+                            type: "object",
+                            nullable: true,
+                            description: "The assigned user (populated), or null when unassigned.",
+                            properties: {
+                                id: { type: "string" },
+                                name: { type: "string" },
+                                email: { type: "string" },
+                                role: { type: "string", enum: ["admin", "support_agent", "user"] },
+                            },
+                        },
+                        category: {
+                            type: "object",
+                            nullable: true,
+                            description: "The incident category (populated).",
+                            properties: {
+                                id: { type: "string" },
+                                name: { type: "string" },
+                            },
+                        },
+                        department: {
+                            type: "object",
+                            nullable: true,
+                            description: "The triage department (populated), or null when unassigned.",
+                            properties: {
+                                id: { type: "string" },
+                                title: { type: "string" },
+                            },
+                        },
+                        dueTime: { type: "string", format: "date-time", nullable: true, description: "SLA deadline derived from priority." },
+                        slaState: { type: "string", nullable: true, description: "Computed SLA state (on_track / at_risk / breached / met / none)." },
+                        isOverdue: { type: "boolean", description: "Computed; true when unresolved past the SLA deadline." },
+                        resolutionNote: { type: "string", maxLength: 2000, example: "" },
+                        resolvedAt: { type: "string", format: "date-time", nullable: true },
+                        closedAt: { type: "string", format: "date-time", nullable: true },
+                        commentCount: { type: "integer", example: 0 },
+                        attachmentCount: { type: "integer", example: 0 },
+                        isMajorIncident: { type: "boolean", example: false },
+                        createdTime: { type: "string", format: "date-time", description: "When the incident was created." },
+                        modifiedTime: { type: "string", format: "date-time", description: "When the incident was last updated." },
+                    },
+                    required: ["subject", "description", "category"],
+                },
+                TicketCreateRequest: {
+                    type: "object",
+                    required: ["subject", "description", "category"],
+                    properties: {
+                        subject: { type: "string", minLength: 5, maxLength: 140, example: "Shared printer is offline" },
+                        description: { type: "string", minLength: 10, maxLength: 5000, example: "The printer on floor 3 is not responding to print jobs." },
+                        category: { type: "string", description: "An active category id.", example: "64b8f0c2e4a9d1f2a3b4c5d7" },
+                        priority: { type: "string", enum: ["low", "medium", "high", "critical"], description: "Optional; defaults to `medium`.", example: "medium" },
+                    },
+                    description: "Any `requester`/`reportedBy` field is ignored - the requester is always the authenticated caller.",
+                },
+                TicketUpdateRequest: {
+                    type: "object",
+                    description: "All fields optional for PATCH (only supplied fields change). PUT requires subject, description and category. Only these descriptive fields are supported; status, assignment, department, requester and timestamps are not editable via this API.",
+                    properties: {
+                        subject: { type: "string", minLength: 5, maxLength: 140, example: "Shared printer is offline (updated)" },
+                        description: { type: "string", minLength: 10, maxLength: 5000, example: "Updated description." },
+                        category: { type: "string", description: "An active category id." },
+                        priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                    },
+                },
+
+                // ------------------------------------------------------------------
                 // Comments
                 // ------------------------------------------------------------------
                 Comment: {
@@ -876,6 +1018,8 @@ endpoint and enforced by the backend regardless of the UI.
             { name: "Categories", description: "Incident category master list." },
             { name: "Departments", description: "Support departments and their memberships." },
             { name: "Incidents", description: "Incident lifecycle, workflow, export, RCA, comments, attachments and links." },
+            { name: "Tickets", description: "Zoho Desk-compatible ticket API (FR5-01/FR5-03) - an adapter over the existing Incident resource. Accepts a portal login JWT OR an OAuth 2.0 access token with the required scope." },
+            { name: "OAuth", description: "OAuth 2.0 token endpoint (FR5-02/FR5-03) for the public REST API. Supports scoped access control." },
             { name: "Problems", description: "Problem Management and the Known Error Database (V4 - FR4). Includes problem<->incident linking and problem-scoped RCA." },
             { name: "Comments", description: "Comment editing/deletion." },
             { name: "Attachments", description: "Attachment download and deletion." },
@@ -1671,6 +1815,158 @@ endpoint and enforced by the backend regardless of the UI.
             },
 
             // ==================================================================
+            // OAuth 2.0 (FR5-02) - client-credentials token endpoint
+            // ==================================================================
+            "/oauth/token": {
+                post: {
+                    tags: ["OAuth"],
+                    summary: "Obtain an access token (client-credentials grant)",
+                    description:
+                        "Public. FR5-02/FR5-03 client-credentials flow for the public REST API. Authenticate with the client_id/client_secret via HTTP Basic (preferred) and/or the `client_id`/`client_secret` fields. Optionally supply a `scope` parameter (space-delimited) to request specific scopes; the client may only request scopes it has been assigned. Returns a short-lived bearer token usable with the Tickets endpoints. Errors follow RFC 6749 (`error`/`error_description`).",
+                    security: [],
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/x-www-form-urlencoded": {
+                                schema: {
+                                    type: "object",
+                                    required: ["grant_type"],
+                                    properties: {
+                                        grant_type: { type: "string", enum: ["client_credentials"], description: "Only client_credentials is supported." },
+                                        client_id: { type: "string", description: "Client id (alternative to HTTP Basic)." },
+                                        client_secret: { type: "string", description: "Client secret (alternative to HTTP Basic)." },
+                                        scope: { type: "string", description: "Space-delimited list of requested scopes (FR5-03). If omitted, all of the client's assigned scopes are granted. Case-sensitive." },
+                                    },
+                                },
+                            },
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    required: ["grant_type"],
+                                    properties: {
+                                        grant_type: { type: "string", enum: ["client_credentials"] },
+                                        client_id: { type: "string" },
+                                        client_secret: { type: "string" },
+                                        scope: { type: "string" },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    responses: {
+                        200: { description: "A bearer access token with granted scopes.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthTokenResponse" } } } },
+                        400: { description: "Invalid request - missing/unsupported grant_type or invalid_scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthErrorResponse" } } } },
+                        401: { description: "Client credentials are missing or invalid.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
+            // Tickets (FR5-01) - Zoho Desk-compatible adapter over Incidents
+            // ==================================================================
+            "/tickets": {
+                get: {
+                    tags: ["Tickets"],
+                    summary: "List tickets (paginated, limit/from)",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.READ` or `tickets.ALL` scope). Returns incidents as Zoho Desk-compatible tickets, honouring the same visibility and filter rules as the incident list. Pagination uses `from`/`limit`.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.READ"] }],
+                    parameters: [
+                        { name: "from", in: "query", required: false, schema: { type: "integer", minimum: 0 }, description: "Zero-based offset (default 0)." },
+                        { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page (default 10, capped at 100)." },
+                        { name: "search", in: "query", required: false, schema: { type: "string", maxLength: 140 }, description: "Literal substring search on subject, description or ticket number." },
+                        { name: "status", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated statuses, e.g. `new,in_progress`." },
+                        { name: "priority", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated priorities, e.g. `high,critical`." },
+                        { name: "category", in: "query", required: false, schema: { type: "string" }, description: "Comma-separated category ids." },
+                        { name: "assignedTo", in: "query", required: false, schema: { type: "string" }, description: "`me`, `unassigned`, or a user id." },
+                        { name: "reportedBy", in: "query", required: false, schema: { type: "string" }, description: "`me` or a user id." },
+                        { name: "overdue", in: "query", required: false, schema: { type: "string", enum: ["true"] }, description: "Filter to overdue tickets." },
+                        { name: "open", in: "query", required: false, schema: { type: "string", enum: ["true"] }, description: "Filter to non-terminal (open) tickets." },
+                        { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
+                    ],
+                    responses: {
+                        200: { description: "Paginated list of tickets.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { tickets: { type: "array", items: { $ref: "#/components/schemas/Ticket" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Insufficient OAuth scope (valid token but missing `tickets.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                post: {
+                    tags: ["Tickets"],
+                    summary: "Create a ticket",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.WRITE` or `tickets.ALL` scope). Creates an Incident from the ticket representation. The requester is always the signed-in caller (never read from the body).",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.WRITE"] }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TicketCreateRequest" } } } },
+                    responses: {
+                        201: { description: "Ticket created.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { ticket: { $ref: "#/components/schemas/Ticket" } } } } } } } },
+                        400: { description: "Inactive/non-existent category.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/tickets/{id}": {
+                get: {
+                    tags: ["Tickets"],
+                    summary: "Get a ticket",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.READ` or `tickets.ALL` scope). Returns one incident mapped to a ticket, with requester, assignee, category and department populated. A user cannot view a ticket they are not allowed to see.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.READ"] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident/ticket id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "Ticket retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { ticket: { $ref: "#/components/schemas/Ticket" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "You do not have access to this ticket, or insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                put: {
+                    tags: ["Tickets"],
+                    summary: "Replace a ticket (supported fields)",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.WRITE` or `tickets.ALL` scope). Full replacement of the supported descriptive fields: subject, description, category and priority. Status, assignment, department and requester are workflow concerns and are deliberately NOT editable here. Requires all supported fields to be supplied.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.WRITE"] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident/ticket id (Mongo ObjectId)." }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TicketUpdateRequest" } } } },
+                    responses: {
+                        200: { description: "Ticket updated.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { ticket: { $ref: "#/components/schemas/Ticket" } } } } } } } },
+                        400: { description: "Missing required field or no changes supplied.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "You can only edit this ticket while it is unassigned or still New; or staff-only priority change.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                patch: {
+                    tags: ["Tickets"],
+                    summary: "Update a ticket (supported fields)",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.WRITE` or `tickets.ALL` scope). Partial update - only the supplied supported fields change. Never allows arbitrary Mongo fields, _id/createdAt/audit manipulation, reporter spoofing, or assignment/department changes.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.WRITE"] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident/ticket id (Mongo ObjectId)." }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TicketUpdateRequest" } } } },
+                    responses: {
+                        200: { description: "Ticket updated.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { ticket: { $ref: "#/components/schemas/Ticket" } } } } } } } },
+                        400: { description: "No changes were supplied.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "You can only edit this ticket while it is unassigned or still New; or staff-only priority change.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                delete: {
+                    tags: ["Tickets"],
+                    summary: "Delete a ticket (admin)",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `tickets.ALL` scope) and the `admin` role. Permanently removes the underlying incident and its child records (same cleanup rules as incident deletion).",
+                    security: [{ bearerAuth: [] }, { oauth2: ["tickets.ALL"] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Incident/ticket id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "Ticket deleted.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
             // Comments (direct)
             // ==================================================================
             "/comments/{id}": {
@@ -2105,6 +2401,133 @@ endpoint and enforced by the backend regardless of the UI.
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Not staff.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Known error not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
+            // CSAT / Surveys (FR4-26..29)
+            // ==================================================================
+            "/surveys/csat": {
+                get: {
+                    tags: ["CSAT"],
+                    summary: "CSAT statistics",
+                    description: "Admin and Agent. Returns overall average rating, response count, breakdowns by agent/department/category, and the count of incidents flagged for manager follow-up.",
+                    security: [{ bearerAuth: [] }],
+                    responses: {
+                        200: {
+                            description: "CSAT statistics.",
+                            content: {
+                                "application/json": {
+                                    schema: {
+                                        type: "object",
+                                        properties: {
+                                            success: { type: "boolean" },
+                                            message: { type: "string" },
+                                            data: {
+                                                type: "object",
+                                                properties: {
+                                                    overall: { type: "object", properties: { avgRating: { type: "number", nullable: true }, responseCount: { type: "integer" } } },
+                                                    byAgent: { type: "array", items: { type: "object", properties: { agentId: { type: "string" }, agentName: { type: "string" }, avgRating: { type: "number" }, responseCount: { type: "integer" } } } },
+                                                    byDepartment: { type: "array", items: { type: "object", properties: { departmentId: { type: "string" }, departmentName: { type: "string" }, avgRating: { type: "number" }, responseCount: { type: "integer" } } } },
+                                                    byCategory: { type: "array", items: { type: "object", properties: { categoryId: { type: "string" }, categoryName: { type: "string" }, avgRating: { type: "number" }, responseCount: { type: "integer" } } } },
+                                                    followUpCount: { type: "integer" },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not admin or agent.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/surveys/csat/trend": {
+                get: {
+                    tags: ["CSAT"],
+                    summary: "CSAT trend over time",
+                    description: "Admin and Agent. Returns daily average CSAT rating and response count for the given number of past days.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [
+                        { name: "days", in: "query", schema: { type: "integer", minimum: 1, maximum: 365, default: 30 }, description: "Number of past days to include." },
+                    ],
+                    responses: {
+                        200: {
+                            description: "CSAT trend data.",
+                            content: {
+                                "application/json": {
+                                    schema: {
+                                        type: "object",
+                                        properties: {
+                                            success: { type: "boolean" },
+                                            message: { type: "string" },
+                                            data: {
+                                                type: "object",
+                                                properties: {
+                                                    trend: {
+                                                        type: "array",
+                                                        items: {
+                                                            type: "object",
+                                                            properties: {
+                                                                date: { type: "string", format: "date", example: "2026-09-01" },
+                                                                avgRating: { type: "number", example: 4.25 },
+                                                                responseCount: { type: "integer", example: 8 },
+                                                            },
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Not admin or agent.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/surveys/{token}": {
+                get: {
+                    tags: ["CSAT"],
+                    summary: "Retrieve a survey by token",
+                    description: "Public. Returns the survey incident info and status. If the survey is already completed, indicates so.",
+                    security: [],
+                    parameters: [{ name: "token", in: "path", required: true, schema: { type: "string" }, description: "Secure survey token." }],
+                    responses: {
+                        200: { description: "Survey retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { survey: { type: "object", properties: { incident: { type: "object" }, status: { type: "string" } } } } } } } } } },
+                        404: { description: "Survey not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                post: {
+                    tags: ["CSAT"],
+                    summary: "Submit a survey response",
+                    description: "Public. Submits rating (1-5) and optional comments. A survey can only be submitted once. Rating below the configurable threshold flags the incident for manager follow-up.",
+                    security: [],
+                    parameters: [{ name: "token", in: "path", required: true, schema: { type: "string" }, description: "Secure survey token." }],
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    required: ["rating"],
+                                    properties: {
+                                        rating: { type: "integer", minimum: 1, maximum: 5, description: "CSAT rating from 1 (very dissatisfied) to 5 (very satisfied)." },
+                                        comments: { type: "string", maxLength: 5000, description: "Optional free-text feedback." },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    responses: {
+                        200: { description: "Survey submitted.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { survey: { type: "object", properties: { id: { type: "string" }, rating: { type: "integer" }, comments: { type: "string" }, status: { type: "string" }, submittedAt: { type: "string", format: "date-time" } } } } } } } } } },
+                        400: { description: "Survey already submitted or invalid rating.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Survey not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
                 },
             },

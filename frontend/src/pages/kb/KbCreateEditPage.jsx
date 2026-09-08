@@ -137,22 +137,15 @@ const KbCreateEditPage = () => {
                         rules={[
                             {
                                 validator: (_, value) => {
-                                    const text =
-                                        value
-                                            ?.replace(/<[^>]*>/g, "")
-                                            .trim() || "";
+                                    const text = value?.replace(/<[^>]*>/g, "").trim() || "";
 
                                     if (!text) {
-                                        return Promise.reject(
-                                            new Error("Body is required")
-                                        );
+                                        return Promise.reject(new Error("Body is required"));
                                     }
 
                                     if (text.length < 10) {
                                         return Promise.reject(
-                                            new Error(
-                                                "Body must be at least 10 characters"
-                                            )
+                                            new Error("Body must be at least 10 characters")
                                         );
                                     }
 
@@ -163,8 +156,6 @@ const KbCreateEditPage = () => {
                     >
                         <RichTextEditor
                             placeholder="Provide the full solution, workaround or known error description..."
-                            value={formValue}
-                            onChange={updateFormValue}
                         />
                     </Form.Item>
                     <Form.Item

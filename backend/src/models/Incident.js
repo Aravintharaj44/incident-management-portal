@@ -160,6 +160,8 @@ const incidentSchema = new mongoose.Schema(
             default: null,
             index: true,
         },
+        // FR4-29: set when a CSAT response is below the configurable threshold.
+        requiresFollowUp: { type: Boolean, default: false, index: true },
     },
     {
         timestamps: true,

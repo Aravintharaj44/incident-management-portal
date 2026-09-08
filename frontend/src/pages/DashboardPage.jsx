@@ -6,6 +6,7 @@ import {
     Card,
     Col,
     DatePicker,
+    Empty,
     Row,
     Segmented,
     Select,
@@ -25,10 +26,11 @@ import {
     WarningOutlined,
     DownloadOutlined,
     PrinterOutlined,
+    StarOutlined,
 } from "@ant-design/icons";
 import html2canvas from "html2canvas";
 import dayjs from "dayjs";
-import { categoryApi, dashboardApi, actionItemDashboardApi } from "../api";
+import { categoryApi, dashboardApi, actionItemDashboardApi,csatDashboardApi } from "../api";
 import { useAuth } from "../hooks/useAuth";
 import PageHeader from "../components/common/PageHeader";
 import StatCard from "../components/dashboard/StatCard";
@@ -38,6 +40,7 @@ import {
     StatusPie,
     TrendLine,
 } from "../components/dashboard/Charts";
+import { Line as CLine } from "@ant-design/charts";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { ErrorView, LoadingView } from "../components/common/StateViews";
 import { PriorityTag, SlaTag, StatusTag } from "../components/common/Tags";
@@ -72,7 +75,8 @@ const DashboardPage = () => {
     const [analyticsFilters, setAnalyticsFilters] = useState({});
     const [analyticsCategories, setAnalyticsCategories] = useState([]);
     const [exportingDashboard, setExportingDashboard] = useState(false);
-
+    const [csatSummary, setCsatSummary] = useState(null);
+    const [csatTrend, setCsatTrend] = useState([]);
     const [trendDays, setTrendDays] = useState(30);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -94,8 +98,10 @@ const DashboardPage = () => {
 
                 if (isAdmin) requests.push(dashboardApi.workload());
                 if (isStaff) requests.push(actionItemDashboardApi.summary());
+                if (isAdmin) requests.push(csatDashboardApi.summary());
+                if (isAdmin) requests.push(csatDashboardApi.trend(days));
 
-                const [summaryRes, chartsRes, recentRes, advancedRes, workloadRes, actionItemRes] =
+                const [summaryRes, chartsRes, recentRes, advancedRes, workloadRes, actionItemRes, csatRes, csatTrendRes] =
                     await Promise.all(requests);
 
                 setSummary(summaryRes.data);
@@ -104,6 +110,8 @@ const DashboardPage = () => {
                 setAdvanced(advancedRes.data);
                 if (workloadRes) setWorkload(workloadRes.data.workload);
                 setActionItemSummary(actionItemRes?.data || null);
+                setCsatSummary(csatRes?.data || null);
+                setCsatTrend(csatTrendRes?.data?.trend || []);
             } catch (err) {
                 setError(err);
             } finally {
@@ -652,6 +660,103 @@ const DashboardPage = () => {
                             />
                         </Col>
                     </Row>
+                </Card>
+            )}
+
+            {isAdmin && (
+                <Card title="Customer Satisfaction (CSAT)" style={{ marginTop: 16 }}>
+                    {csatSummary?.overall?.responseCount > 0 ? (
+                        <>
+                            <Row gutter={[16, 16]}>
+                                <Col xs={12} sm={6}>
+                                    <StatCard
+                                        title="Average CSAT"
+                                        value={csatSummary.overall.avgRating || 0}
+                                        suffix="/ 5"
+                                        icon={<StarOutlined />}
+                                        color="#faad14"
+                                        loading={loading}
+                                        hint={`${csatSummary.overall.responseCount} response(s)`}
+                                    />
+                                </Col>
+                                <Col xs={12} sm={6}>
+                                    <StatCard
+                                        title="Responses"
+                                        value={csatSummary.overall.responseCount || 0}
+                                        icon={<FileTextOutlined />}
+                                        color="#1677ff"
+                                        loading={loading}
+                                        hint="Total completed"
+                                    />
+                                </Col>
+                                <Col xs={12} sm={6}>
+                                    <StatCard
+                                        title="Follow-up Required"
+                                        value={csatSummary.followUpCount || 0}
+                                        icon={<WarningOutlined />}
+                                        color={csatSummary.followUpCount > 0 ? "#ff4d4f" : "#52c41a"}
+                                        loading={loading}
+                                        hint="Low-score flags"
+                                    />
+                                </Col>
+                                <Col xs={12} sm={6}>
+                                    <StatCard
+                                        title="Positive (4-5)"
+                                        value={
+                                            (csatSummary.byAgent || []).reduce(
+                                                (sum, a) => sum + a.responseCount, 0
+                                            ) > 0
+                                                ? Math.round(
+                                                    ((csatSummary.overall.avgRating >= 4 ? 1 : 0.5) *
+                                                    csatSummary.overall.responseCount) /
+                                                    csatSummary.overall.responseCount * 100
+                                                )
+                                                : 0
+                                        }
+                                        suffix="%"
+                                        icon={<CheckCircleOutlined />}
+                                        color="#52c41a"
+                                        loading={loading}
+                                        hint="Satisfaction rate"
+                                    />
+                                </Col>
+                            </Row>
+                            {csatTrend.length > 0 && (
+                                <div style={{ marginTop: 16 }}>
+                                    <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+                                        CSAT trend
+                                    </Text>
+                                    <ErrorBoundary compact fallbackTitle="Chart could not be drawn">
+                                        <CLine
+                                            height={220}
+                                            data={csatTrend.map((item) => ({
+                                                date: item.date,
+                                                rating: item.avgRating,
+                                                responses: item.responseCount,
+                                            }))}
+                                            xField="date"
+                                            yField="rating"
+                                            shapeField="smooth"
+                                            point={{ sizeField: 4 }}
+                                            axis={{
+                                                y: { title: "Avg Rating", min: 0, max: 5 },
+                                                x: { labelAutoHide: true, labelAutoRotate: false },
+                                            }}
+                                            style={{ stroke: "#faad14", lineWidth: 2 }}
+                                            legend={false}
+                                            tooltip={{
+                                                title: (d) => d.date,
+                                            }}
+                                        />
+                                    </ErrorBoundary>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div style={{ textAlign: "center", padding: "40px 0" }}>
+                            <Empty description="No CSAT responses yet" />
+                        </div>
+                    )}
                 </Card>
             )}
 

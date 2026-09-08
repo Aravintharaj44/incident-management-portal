@@ -6,10 +6,11 @@
  * treated as an unexpected 500 and its details are hidden from the client.
  */
 class ApiError extends Error {
-    constructor(statusCode, message, errors = null) {
+    constructor(statusCode, message, errors = null, code = null) {
         super(message);
         this.statusCode = statusCode;
         this.errors = errors;
+        this.code = code;
         this.isOperational = true;
         Error.captureStackTrace(this, this.constructor);
     }
@@ -22,8 +23,8 @@ class ApiError extends Error {
         return new ApiError(401, message);
     }
 
-    static forbidden(message = "You do not have permission to perform this action") {
-        return new ApiError(403, message);
+    static forbidden(message = "You do not have permission to perform this action", code = null) {
+        return new ApiError(403, message, null, code);
     }
 
     static notFound(message = "Resource not found") {

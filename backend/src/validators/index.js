@@ -674,6 +674,14 @@ const submitSurveyValidator =
         .isLength({ max: 5000 })
         .withMessage("Comments cannot exceed 5000 characters"),
 ];
+
+const getCsatTrendValidator = [
+    query("days")
+        .optional()
+        .isInt({ min: 1, max: 365 })
+        .withMessage("Days must be between 1 and 365"),
+];
+
 module.exports = {
     authValidators,
     userValidators,
@@ -689,6 +697,7 @@ module.exports = {
     problemRcaValidators,
     actionItemValidators,
     knowledgeBaseArticleValidators,
-    submitSurveyValidator
+    submitSurveyValidator,
+    getCsatTrendValidator,
 };
 
