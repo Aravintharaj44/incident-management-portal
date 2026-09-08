@@ -21,13 +21,6 @@ const {
     ACTION_ITEM_STATUS_LABELS,
 } = require("../constants");
 
-/**
- * Dashboard aggregations (FR-11).
- *
- * Every pipeline starts from the caller's visibility filter, so an End User's
- * dashboard counts only their own incidents while an Admin sees the whole
- * organisation - the numbers always match what that user can open.
- */
 
 /** Turns [{_id, count}] into a dense series with zeros for missing buckets. */
 const densify = (rows, keys, labels) => {

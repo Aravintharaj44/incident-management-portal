@@ -61,8 +61,6 @@ const oauthClientSchema = new mongoose.Schema(
             default: ["client_credentials"],
         },
 
-        // FR5-03 - OAuth scopes this client may request. Each token issued
-        // for this client can only carry scopes present in this list.
         scopes: {
             type: [String],
             enum: {

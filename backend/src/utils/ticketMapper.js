@@ -1,17 +1,5 @@
 const slaService = require("../services/slaService");
 
-/**
- * Zoho Desk-compatible ticket mapper (FR5-01).
- *
- * The Incident model stays the source of truth. This module adapts an internal
- * Incident document into the public "Ticket" shape served by /api/v1/tickets,
- * and maps a ticket-style request body back onto the Incident fields.
- *
- * The mapper is deliberately a whitelist: nothing is passed through blindly, so
- * Mongo internals (_id, __v), password hashes, tokens and internal audit
- * metadata are never exposed. Only fields we explicitly choose are surfaced.
- */
-
 const idOf = (value) => {
     if (!value) return null;
     return String(value._id ?? value);

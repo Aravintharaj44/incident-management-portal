@@ -37,6 +37,13 @@ const DEMO_OAUTH = {
         clientSecret: "contacts-read-oauth-client-secret",
         scopes: ["contacts.READ"],
     },
+    // Articles-only client for the FR5-07 Knowledge Base Articles API.
+    articlesRead: {
+        name: "Articles Read Client",
+        clientId: "articles-read-oauth-client",
+        clientSecret: "articles-read-oauth-client-secret",
+        scopes: ["articles.READ"],
+    },
     // Revoked client for revocation tests.
     revoked: {
         name: "Revoked Integration Client",

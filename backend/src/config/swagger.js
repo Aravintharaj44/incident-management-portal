@@ -1,21 +1,3 @@
-/**
- * Swagger / OpenAPI 3.0 documentation for the Incident Management Portal API.
- *
- * The whole specification lives in this single module, which app.js mounts at
- * `GET /api-docs` (Swagger UI) and `GET /api-docs.json` (the raw spec).
- *
- * Everything here is a *description* of the API - nothing in this file changes
- * how a request is handled. It is kept in sync with the actual routes
- * (src/routes), validators (src/validators) and models (src/models), so it
- * documents real endpoints and real field constraints. No endpoint, validation
- * rule or model is altered for the sake of documentation.
- *
- * Security: no secrets (JWT tokens, passwords, Mongo credentials or other
- * environment values) are embedded here. Protected routes simply declare the
- * `bearerAuth` http-scheme so Swagger UI renders an "Authorize" button; users
- * supply their own token obtained from `POST /api/v1/auth/login`.
- */
-
 const swaggerJSDoc = require("swagger-jsdoc");
 const { env } = require("./env");
 
@@ -49,10 +31,11 @@ Tokens are passed as an \`Authorization: Bearer <token>\` header. Roles are
 \`admin\`, \`support_agent\` and \`user\`; role requirements are noted per
 endpoint and enforced by the backend regardless of the UI.
 
-### OAuth 2.0 (FR5-02) - public ticket API
+### OAuth 2.0 (FR5-02) - public Tickets, Contacts and Articles APIs
 
-External systems can call the Tickets endpoints with a machine token instead of
-a portal login:
+External systems can call the Tickets (\`/tickets\`), Contacts (\`/contacts\`,
+FR5-04) and Knowledge Base Articles (\`/articles\`, FR5-07) endpoints with a
+machine token instead of a portal login:
 
 1. \`POST /api/v1/oauth/token\` with \`grant_type=client_credentials\` and the
    client credentials (HTTP Basic or \`client_id\`/\`client_secret\` fields).
@@ -61,8 +44,9 @@ a portal login:
    secret.
 
 Access tokens are short-lived (default 3600s), signed with a separate secret,
-and never interchangeable with portal JWTs. Create clients with
-\`npm run oauth:create-client\`.
+and never interchangeable with portal JWTs. The granted scopes (FR5-03) decide
+which endpoints a token can call - the Contacts API currently requires
+\`contacts.READ\`. Create clients with \`npm run oauth:create-client\`.
 `,
         },
         servers: [
@@ -631,6 +615,80 @@ and never interchangeable with portal JWTs. Create clients with
                 },
 
                 // ------------------------------------------------------------------
+                // Contacts (FR5-04) - adapter over the existing User model
+                // ------------------------------------------------------------------
+                Contact: {
+                    type: "object",
+                    description: "A public contact. Contacts are an adapter representation of an End User (`role: \"user\"`); the User document remains the source of truth. Internal fields (password, password hash, role, login metadata, Mongo internals) are never exposed.",
+                    properties: {
+                        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d9" },
+                        name: { type: "string", minLength: 2, maxLength: 80, example: "Karthik Rao" },
+                        email: { type: "string", format: "email", example: "karthik@zybisys.com" },
+                        isActive: { type: "boolean", example: true },
+                        createdAt: { type: "string", format: "date-time", description: "When the contact (user) was created." },
+                        updatedAt: { type: "string", format: "date-time", description: "When the contact was last updated." },
+                    },
+                    required: ["name", "email"],
+                },
+                ContactCreateRequest: {
+                    type: "object",
+                    required: ["name", "email"],
+                    description: "Creates an End User contact. A random portal password is generated server-side and never returned; `role`/`password`/`lastLoginAt` fields in the body are ignored.",
+                    properties: {
+                        name: { type: "string", minLength: 2, maxLength: 80, example: "Isabella Fernandes" },
+                        email: { type: "string", format: "email", example: "isabella@zybisys.com" },
+                        isActive: { type: "boolean", description: "Optional; defaults to `true`.", example: true },
+                    },
+                },
+                ContactUpdateRequest: {
+                    type: "object",
+                    description: "PUT requires `name` and `email` (full replacement of the supported fields); `isActive` is optional. Role, password and login metadata are never writable through this API. A duplicate email on change is rejected with 409.",
+                    properties: {
+                        name: { type: "string", minLength: 2, maxLength: 80, example: "Isabella R. Fernandes" },
+                        email: { type: "string", format: "email", example: "isabella.r@zybisys.com" },
+                        isActive: { type: "boolean", example: true },
+                    },
+                },
+
+                // ------------------------------------------------------------------
+                // Articles (FR5-07)
+                // ------------------------------------------------------------------
+                Article: {
+                    type: "object",
+                    description: "A publicly-visible Knowledge Base article. Reuses the existing KnowledgeBaseArticle model - only `published` articles are exposed. Internal Mongo/audit fields (`_id`, `authorID`, `deletedAt`, vote metadata) are never returned.",
+                    properties: {
+                        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d9" },
+                        title: { type: "string", example: "VPN Connection Drops After 5 Minutes" },
+                        body: { type: "string", description: "The article body (the model field is `body`; there is no `content`/`summary` field)." },
+                        status: { type: "string", enum: ["draft", "published", "retired", "archived"], example: "published", description: "Always `published` on this surface - non-published articles are not returned." },
+                        tags: { type: "array", items: { type: "string" }, example: ["vpn", "network", "firewall"] },
+                        categories: { type: "array", description: "The article's categories (populated from the shared Category model).", items: { $ref: "#/components/schemas/ArticleCategory" } },
+                        author: { $ref: "#/components/schemas/ArticleAuthor" },
+                        helpfulCount: { type: "integer", example: 5 },
+                        notHelpfulCount: { type: "integer", example: 1 },
+                        createdAt: { type: "string", format: "date-time" },
+                        updatedAt: { type: "string", format: "date-time" },
+                    },
+                    required: ["title", "status"],
+                },
+                ArticleCategory: {
+                    type: "object",
+                    description: "A category reference populated from the Category model.",
+                    properties: {
+                        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d8" },
+                        name: { type: "string", example: "Network" },
+                    },
+                },
+                ArticleAuthor: {
+                    type: "object",
+                    description: "The article author, populated from the shared User model.",
+                    properties: {
+                        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d7" },
+                        name: { type: "string", example: "Rahul Verma" },
+                    },
+                },
+
+                // ------------------------------------------------------------------
                 // Comments
                 // ------------------------------------------------------------------
                 Comment: {
@@ -1141,6 +1199,7 @@ IntakeResolveRequest: {
             { name: "Departments", description: "Support departments and their memberships." },
             { name: "Incidents", description: "Incident lifecycle, workflow, export, RCA, comments, attachments and links." },
             { name: "Tickets", description: "Zoho Desk-compatible ticket API (FR5-01/FR5-03) - an adapter over the existing Incident resource. Accepts a portal login JWT OR an OAuth 2.0 access token with the required scope." },
+            { name: "Articles", description: "Public Knowledge Base Articles API (FR5-07) - read-only, over the existing KnowledgeBaseArticle resource. Returns only published articles to callers with the `articles.READ` scope." },
             { name: "OAuth", description: "OAuth 2.0 token endpoint (FR5-02/FR5-03) for the public REST API. Supports scoped access control." },
             { name: "Problems", description: "Problem Management and the Known Error Database (V4 - FR4). Includes problem<->incident linking and problem-scoped RCA." },
             { name: "Comments", description: "Comment editing/deletion." },
@@ -2086,6 +2145,116 @@ IntakeResolveRequest: {
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
+            // Contacts (FR5-04)
+            // ==================================================================
+            "/contacts": {
+                get: {
+                    tags: ["Contacts"],
+                    summary: "List contacts (paginated, limit/from)",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `contacts.READ` scope). Returns End Users as public contacts, adapted from the existing User model (no duplicate records). Pagination uses `from`/`limit`.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["contacts.READ"] }],
+                    parameters: [
+                        { name: "from", in: "query", required: false, schema: { type: "integer", minimum: 0 }, description: "Zero-based offset (default 0)." },
+                        { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page (default 10, capped at 100)." },
+                        { name: "search", in: "query", required: false, schema: { type: "string", maxLength: 140 }, description: "Literal substring search on contact name or email." },
+                        { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
+                    ],
+                    responses: {
+                        200: { description: "Paginated list of contacts.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { contacts: { type: "array", items: { $ref: "#/components/schemas/Contact" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Insufficient OAuth scope (valid token but missing `contacts.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                post: {
+                    tags: ["Contacts"],
+                    summary: "Create a contact",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `contacts.READ` scope). Creates an End User contact backed by the shared User collection. A random portal password is generated server-side and never returned; role, password and login metadata in the body are ignored.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["contacts.READ"] }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ContactCreateRequest" } } } },
+                    responses: {
+                        201: { description: "Contact created.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { contact: { $ref: "#/components/schemas/Contact" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        409: { description: "A contact with that email already exists.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/contacts/{id}": {
+                get: {
+                    tags: ["Contacts"],
+                    summary: "Get a contact",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `contacts.READ` scope). Returns one End User contact. Staff users are not contacts, so their ids return 404 on this surface.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["contacts.READ"] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Contact/user id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "Contact retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { contact: { $ref: "#/components/schemas/Contact" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Contact not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                put: {
+                    tags: ["Contacts"],
+                    summary: "Replace a contact (supported fields)",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `contacts.READ` scope). Full replacement of the supported contact fields: name, email and optionally isActive. Role, password and login metadata are never writable through this API.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["contacts.READ"] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Contact/user id (Mongo ObjectId)." }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ContactUpdateRequest" } } } },
+                    responses: {
+                        200: { description: "Contact updated.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { contact: { $ref: "#/components/schemas/Contact" } } } } } } } },
+                        400: { description: "Missing required field or no changes supplied.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Contact not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        409: { description: "A contact with that email already exists.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
+            // Articles (FR5-07) - public Knowledge Base Articles API
+            // ==================================================================
+            "/articles": {
+                get: {
+                    tags: ["Articles"],
+                    summary: "List published Knowledge Base articles (paginated, with search/category filters)",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `articles.READ` scope). Returns only published Knowledge Base articles using the existing KnowledgeBaseArticle model. Drafts, retired, archived and soft-deleted articles are never exposed. Search reuses the existing KB search behaviour (case-insensitive match on title, body and tags).",
+                    security: [{ bearerAuth: [] }, { oauth2: ["articles.READ"] }],
+                    parameters: [
+                        { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1 }, description: "Page number (default 1)." },
+                        { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page (default 10, capped at 100)." },
+                        { name: "search", in: "query", required: false, schema: { type: "string", maxLength: 140 }, description: "Case-insensitive search on article title, body or tags." },
+                        { name: "categoryId", in: "query", required: false, schema: { type: "string" }, description: "Filter to articles in the given category (Mongo ObjectId)." },
+                        { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
+                    ],
+                    responses: {
+                        200: { description: "Paginated list of published articles.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Article" } }, pagination: { type: "object", properties: { page: { type: "integer" }, limit: { type: "integer" }, total: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Insufficient OAuth scope (valid token but missing `articles.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid query parameters.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/articles/{id}": {
+                get: {
+                    tags: ["Articles"],
+                    summary: "Get one published Knowledge Base article",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `articles.READ` scope). Returns a single published article. Drafts, retired, archived and soft-deleted articles are not exposed - they return 404. An invalid id returns a validation error.",
+                    security: [{ bearerAuth: [] }, { oauth2: ["articles.READ"] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Article id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "Article retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { article: { $ref: "#/components/schemas/Article" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Article not found (or not published).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
                 },

@@ -697,11 +697,12 @@ const seedKBArticles = async (usersByEmail, categoriesByName) => {
 /**
  * FR5-02/FR5-03 - demo OAuth clients for the public REST API.
  *
- * Creates a "System Integration" service-account agent plus four clients:
+ * Creates a "System Integration" service-account agent plus five clients:
  * one active with full ticket scopes (bound to the admin account for the
- * E2E suite), a read-only client, a contacts-only client, and one revoked
- * client so revocation behavior can be demonstrated.  Credentials come from
- * oauthDemoData (DEMO-ONLY, hashed at rest by the model's pre-save hook).
+ * E2E suite), a read-only client, a contacts-only client, an articles-only
+ * client (FR5-07), and one revoked client so revocation behavior can be
+ * demonstrated.  Credentials come from oauthDemoData (DEMO-ONLY, hashed at
+ * rest by the model's pre-save hook).
  */
 const seedOAuthClients = async (usersByEmail) => {
     let serviceAccount = usersByEmail.get(DEMO_OAUTH.serviceAccount.email);
@@ -746,6 +747,14 @@ const seedOAuthClients = async (usersByEmail) => {
             isActive: true,
         },
         {
+            clientId: DEMO_OAUTH.articlesRead.clientId,
+            clientSecretHash: DEMO_OAUTH.articlesRead.clientSecret,
+            name: DEMO_OAUTH.articlesRead.name,
+            user: serviceAccount._id,
+            scopes: DEMO_OAUTH.articlesRead.scopes,
+            isActive: true,
+        },
+        {
             clientId: DEMO_OAUTH.revoked.clientId,
             clientSecretHash: DEMO_OAUTH.revoked.clientSecret,
             name: DEMO_OAUTH.revoked.name,
@@ -756,7 +765,7 @@ const seedOAuthClients = async (usersByEmail) => {
     ]);
 
     logger.info(
-        `Created 4 OAuth clients for "${DEMO_OAUTH.serviceAccount.email}" (admin-bound: ${DEMO_OAUTH.active.clientId})`
+        `Created 5 OAuth clients for "${DEMO_OAUTH.serviceAccount.email}" (admin-bound: ${DEMO_OAUTH.active.clientId})`
     );
 };
 
@@ -835,6 +844,8 @@ const run = async () => {
     console.log(`               scopes: ${DEMO_OAUTH.readOnly.scopes.join(", ")}`);
     console.log(`    contacts   ${DEMO_OAUTH.contactsRead.clientId}  /  ${DEMO_OAUTH.contactsRead.clientSecret}`);
     console.log(`               scopes: ${DEMO_OAUTH.contactsRead.scopes.join(", ")}`);
+    console.log(`    articles   ${DEMO_OAUTH.articlesRead.clientId}  /  ${DEMO_OAUTH.articlesRead.clientSecret}`);
+    console.log(`               scopes: ${DEMO_OAUTH.articlesRead.scopes.join(", ")}`);
     console.log(`    revoked    ${DEMO_OAUTH.revoked.clientId}  /  ${DEMO_OAUTH.revoked.clientSecret}`);
     console.log(`               scopes: ${DEMO_OAUTH.revoked.scopes.join(", ")}`);
     console.log("=========================================================\n");
