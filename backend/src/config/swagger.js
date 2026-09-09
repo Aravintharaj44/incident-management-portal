@@ -134,14 +134,17 @@ which endpoints a token can call - the Contacts API currently requires
                 },
                 Pagination: {
                     type: "object",
-                    description: "Pagination metadata returned by list endpoints.",
+                    description: "Pagination metadata returned by list endpoints. Internal endpoints use `page`; the public Zoho-style API (FR5-01/FR5-04/FR5-07/FR5-08) uses `from` (zero-based offset), `limit`, `count`/`total` (records matching the filters) and `hasMore`. Only the keys relevant to the endpoint are returned.",
                     properties: {
                         page: { type: "integer", example: 1 },
+                        from: { type: "integer", example: 0 },
                         limit: { type: "integer", example: 10 },
+                        count: { type: "integer", example: 42 },
                         total: { type: "integer", example: 42 },
                         totalPages: { type: "integer", example: 5 },
                         hasNextPage: { type: "boolean", example: true },
                         hasPrevPage: { type: "boolean", example: false },
+                        hasMore: { type: "boolean", example: true },
                     },
                 },
                 PaginatedResponse: {
@@ -1943,7 +1946,7 @@ which endpoints a token can call - the Contacts API currently requires
                         { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
                     ],
                     responses: {
-                        200: { description: "Paginated list of tickets.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { tickets: { type: "array", items: { $ref: "#/components/schemas/Ticket" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        200: { description: "Paginated list of tickets.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { tickets: { type: "array", items: { $ref: "#/components/schemas/Ticket" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, total: { type: "integer" }, hasMore: { type: "boolean" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Insufficient OAuth scope (valid token but missing `tickets.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
@@ -2041,7 +2044,7 @@ which endpoints a token can call - the Contacts API currently requires
                         { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
                     ],
                     responses: {
-                        200: { description: "Paginated list of contacts.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { contacts: { type: "array", items: { $ref: "#/components/schemas/Contact" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        200: { description: "Paginated list of contacts.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { contacts: { type: "array", items: { $ref: "#/components/schemas/Contact" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, total: { type: "integer" }, hasMore: { type: "boolean" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Insufficient OAuth scope (valid token but missing `contacts.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
@@ -2101,17 +2104,17 @@ which endpoints a token can call - the Contacts API currently requires
                 get: {
                     tags: ["Articles"],
                     summary: "List published Knowledge Base articles (paginated, with search/category filters)",
-                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `articles.READ` scope). Returns only published Knowledge Base articles using the existing KnowledgeBaseArticle model. Drafts, retired, archived and soft-deleted articles are never exposed. Search reuses the existing KB search behaviour (case-insensitive match on title, body and tags).",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `articles.READ` scope). Returns only published Knowledge Base articles using the existing KnowledgeBaseArticle model. Drafts, retired, archived and soft-deleted articles are never exposed. Search reuses the existing KB search behaviour (case-insensitive match on title, body and tags). Pagination uses `from`/`limit`.",
                     security: [{ bearerAuth: [] }, { oauth2: ["articles.READ"] }],
                     parameters: [
-                        { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1 }, description: "Page number (default 1)." },
+                        { name: "from", in: "query", required: false, schema: { type: "integer", minimum: 0 }, description: "Zero-based offset (default 0)." },
                         { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page (default 10, capped at 100)." },
                         { name: "search", in: "query", required: false, schema: { type: "string", maxLength: 140 }, description: "Case-insensitive search on article title, body or tags." },
                         { name: "categoryId", in: "query", required: false, schema: { type: "string" }, description: "Filter to articles in the given category (Mongo ObjectId)." },
                         { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
                     ],
                     responses: {
-                        200: { description: "Paginated list of published articles.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Article" } }, pagination: { type: "object", properties: { page: { type: "integer" }, limit: { type: "integer" }, total: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        200: { description: "Paginated list of published articles.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Article" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Insufficient OAuth scope (valid token but missing `articles.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid query parameters.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },

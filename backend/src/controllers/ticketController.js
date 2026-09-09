@@ -6,7 +6,7 @@ const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 const logger = require("../utils/logger");
 const { successResponse } = require("../utils/apiResponse");
-const { MAX_LIMIT } = require("../utils/pagination");
+const { getFromLimit, buildPaginationMeta } = require("../utils/pagination");
 const { incidentToTicket } = require("../utils/ticketMapper");
 const activityService = require("../services/activityService");
 const notificationService = require("../services/notificationService");
@@ -30,23 +30,11 @@ const POPULATE = [
 ];
 
 /**
- * Reads `from` / `limit` as the Zoho-style pagination keys (FR5-01; FR5-08 will
- * build on the same contract). The upper bound reuses the project's MAX_LIMIT
- * so no caller can pull the whole collection in one request.
- */
-const getFromLimit = (query, { defaultLimit = 10 } = {}) => {
-    const from = Math.max(0, Number.parseInt(query.from, 10) || 0);
-    const requestedLimit = Number.parseInt(query.limit, 10) || defaultLimit;
-    const limit = Math.min(MAX_LIMIT, Math.max(1, requestedLimit));
-    return { from, limit, skip: from };
-};
-
-/**
  * GET /api/v1/tickets
  *
  * Returns incidents as tickets, honouring the same visibility and filter rules
  * as the existing incident list. Response uses the ticket envelope with
- * `from`/`limit` pagination metadata.
+ * `from`/`limit` pagination metadata (Zoho-style, FR5-08).
  */
 const listTickets = asyncHandler(async (req, res) => {
     const filter = buildIncidentFilter(req);
@@ -55,7 +43,7 @@ const listTickets = asyncHandler(async (req, res) => {
     const [incidents, total] = await Promise.all([
         Incident.find(filter)
             .populate(POPULATE)
-            .sort({ createdAt: -1 })
+            .sort({ createdAt: -1, _id: -1 })
             .skip(skip)
             .limit(limit)
             .lean(),
@@ -69,14 +57,12 @@ const listTickets = asyncHandler(async (req, res) => {
         count: total,
         from,
         limit,
-        pagination: {
-            count: total,
+        pagination: buildPaginationMeta({
             from,
             limit,
-            totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
-            hasNextPage: from + tickets.length < total,
-            hasPrevPage: from > 0,
-        },
+            total,
+            rowCount: tickets.length,
+        }),
     });
 });
 

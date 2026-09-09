@@ -19,12 +19,16 @@ const articleValidators = {
             .optional()
             .isMongoId()
             .withMessage("categoryId must be a valid Mongo ObjectId"),
-        query("page")
+        query("from")
             .optional()
-            .isInt({ min: 1 })
-            .withMessage("page must be 1 or more"),
+            .not().isArray()
+            .withMessage("from must be provided at most once")
+            .isInt({ min: 0 })
+            .withMessage("from must be 0 or more"),
         query("limit")
             .optional()
+            .not().isArray()
+            .withMessage("limit must be provided at most once")
             .isInt({ min: 1, max: 100 })
             .withMessage("Limit must be between 1 and 100"),
         query("sortOrder")

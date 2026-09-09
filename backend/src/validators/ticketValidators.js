@@ -1,15 +1,6 @@
 const { body, param, query } = require("express-validator");
 const { PRIORITY_VALUES } = require("../constants");
 
-/**
- * Validation rules for the Zoho Desk-compatible ticket API (FR5-01).
- *
- * These mirror the incident rules but speak the ticket vocabulary (subject,
- * description, category, priority). Only supported ticket fields are accepted:
- * requester, status, assignment, department, _id, timestamps and any unknown
- * field are deliberately not whitelisted, so a crafted body cannot escalate
- * privileges or mutate protected state through /tickets.
- */
 
 const stamp = `Ticket`;
 
@@ -20,10 +11,14 @@ const ticketValidators = {
     list: [
         query("from")
             .optional()
+            .not().isArray()
+            .withMessage("from must be provided at most once")
             .isInt({ min: 0 })
             .withMessage("from must be 0 or more"),
         query("limit")
             .optional()
+            .not().isArray()
+            .withMessage("limit must be provided at most once")
             .isInt({ min: 1, max: 100 })
             .withMessage("Limit must be between 1 and 100"),
         query("search")

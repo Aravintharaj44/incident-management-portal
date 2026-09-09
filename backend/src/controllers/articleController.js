@@ -1,8 +1,8 @@
 const KBA = require("../models/KnowledgeBaseArticle");
 const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
-const { successResponse, paginatedResponse } = require("../utils/apiResponse");
-const { getPagination } = require("../utils/pagination");
+const { successResponse } = require("../utils/apiResponse");
+const { getFromLimit, buildPaginationMeta } = require("../utils/pagination");
 const { containsPattern } = require("../utils/escapeRegex");
 const { articleToArticle } = require("../utils/articleMapper");
 const { KBA_STATUS } = require("../constants");
@@ -51,27 +51,33 @@ const listArticles = asyncHandler(async (req, res) => {
     const filter =
         conditions.length === 1 ? conditions[0] : { $and: conditions };
 
-    const { page, limit, skip } = getPagination(req.query, {
-        defaultLimit: 10,
-    });
+    const { from, limit, skip } = getFromLimit(req.query, { defaultLimit: 10 });
     const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
 
     const [items, total] = await Promise.all([
         KBA.find(filter)
             .populate(POPULATE)
-            .sort({ createdAt: sortOrder })
+            .sort({ createdAt: sortOrder, _id: sortOrder })
             .skip(skip)
             .limit(limit)
             .lean(),
         KBA.countDocuments(filter),
     ]);
 
-    return paginatedResponse(
-        res,
-        "Articles retrieved",
-        items.map(articleToArticle),
-        { page, limit, total }
-    );
+    const articles = items.map(articleToArticle);
+
+    return successResponse(res, 200, "Articles retrieved", {
+        items: articles,
+        count: total,
+        from,
+        limit,
+        pagination: buildPaginationMeta({
+            from,
+            limit,
+            total,
+            rowCount: articles.length,
+        }),
+    });
 });
 
 /**
