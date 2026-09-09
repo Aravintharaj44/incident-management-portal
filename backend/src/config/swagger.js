@@ -47,6 +47,22 @@ Access tokens are short-lived (default 3600s), signed with a separate secret,
 and never interchangeable with portal JWTs. The granted scopes (FR5-03) decide
 which endpoints a token can call - the Contacts API currently requires
 \`contacts.READ\`. Create clients with \`npm run oauth:create-client\`.
+
+### Rate Limiting (FR5-09) - daily API credits
+
+Every OAuth-authenticated request to the public REST API (\`/tickets\`,
+\`/contacts\`, \`/articles\`) consumes one daily API credit. Each OAuth client
+has a configurable daily limit (default 1000, set via \`PUBLIC_API_DAILY_CREDITS\`).
+
+All authenticated public API responses include rate-limit headers:
+
+- \`X-RateLimit-Limit\` - the daily credit limit for this client.
+- \`X-RateLimit-Remaining\` - credits remaining today.
+- \`X-RateLimit-Reset\` - seconds until the next UTC day (when credits reset).
+
+When the daily limit is exceeded, the API returns **HTTP 429 Too Many
+Requests** with a \`Retry-After\` header indicating seconds until the next
+reset. Portal JWT requests are not subject to this rate limit.
 `,
         },
         servers: [
@@ -131,6 +147,15 @@ which endpoints a token can call - the Contacts API currently requires
                         error_description: { type: "string" },
                     },
                     required: ["error"],
+                },
+                RateLimitError: {
+                    type: "object",
+                    description: "Returned when the daily OAuth API credit limit is exceeded (HTTP 429).",
+                    properties: {
+                        success: { type: "boolean", example: false },
+                        message: { type: "string", example: "Daily API rate limit exceeded" },
+                    },
+                    required: ["success", "message"],
                 },
                 Pagination: {
                     type: "object",
@@ -1949,6 +1974,7 @@ which endpoints a token can call - the Contacts API currently requires
                         200: { description: "Paginated list of tickets.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { tickets: { type: "array", items: { $ref: "#/components/schemas/Ticket" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, total: { type: "integer" }, hasMore: { type: "boolean" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Insufficient OAuth scope (valid token but missing `tickets.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09). Includes `Retry-After` header with seconds until reset.", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 post: {
@@ -1962,6 +1988,7 @@ which endpoints a token can call - the Contacts API currently requires
                         400: { description: "Inactive/non-existent category.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -1978,6 +2005,7 @@ which endpoints a token can call - the Contacts API currently requires
                         403: { description: "You do not have access to this ticket, or insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 put: {
@@ -1994,6 +2022,7 @@ which endpoints a token can call - the Contacts API currently requires
                         403: { description: "You can only edit this ticket while it is unassigned or still New; or staff-only priority change.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 patch: {
@@ -2010,6 +2039,7 @@ which endpoints a token can call - the Contacts API currently requires
                         403: { description: "You can only edit this ticket while it is unassigned or still New; or staff-only priority change.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 delete: {
@@ -2024,6 +2054,7 @@ which endpoints a token can call - the Contacts API currently requires
                         403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -2047,6 +2078,7 @@ which endpoints a token can call - the Contacts API currently requires
                         200: { description: "Paginated list of contacts.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { contacts: { type: "array", items: { $ref: "#/components/schemas/Contact" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, total: { type: "integer" }, hasMore: { type: "boolean" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Insufficient OAuth scope (valid token but missing `contacts.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09). Includes `Retry-After` header with seconds until reset.", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 post: {
@@ -2060,6 +2092,7 @@ which endpoints a token can call - the Contacts API currently requires
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         409: { description: "A contact with that email already exists.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -2076,6 +2109,7 @@ which endpoints a token can call - the Contacts API currently requires
                         403: { description: "Insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Contact not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 put: {
@@ -2093,6 +2127,7 @@ which endpoints a token can call - the Contacts API currently requires
                         404: { description: "Contact not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         409: { description: "A contact with that email already exists.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -2118,6 +2153,7 @@ which endpoints a token can call - the Contacts API currently requires
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Insufficient OAuth scope (valid token but missing `articles.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid query parameters.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09). Includes `Retry-After` header with seconds until reset.", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -2134,6 +2170,7 @@ which endpoints a token can call - the Contacts API currently requires
                         403: { description: "Insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Article not found (or not published).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },

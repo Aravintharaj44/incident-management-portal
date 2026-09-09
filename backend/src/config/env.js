@@ -86,6 +86,9 @@ const env = {
         authMax: toInt(process.env.RATE_LIMIT_AUTH_MAX, 30),
     },
 
+    // FR5-09: daily API credit limit per OAuth client for the public REST API.
+    publicApiDailyCredits: toInt(process.env.PUBLIC_API_DAILY_CREDITS, 1000),
+
     // Set to false to stop the seed script from wiping existing collections.
     seedResetsData: toBool(process.env.SEED_RESET, true),
 
