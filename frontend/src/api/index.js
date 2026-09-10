@@ -13,5 +13,6 @@ export { problemApi, knownErrorApi } from "./problems";
 export { actionItemApi, actionItemDashboardApi } from "./actionItemApi";
 export { kbApi } from "./kb";
 export { surveyApi,csatDashboardApi } from "./surveys";
+export { oauthClientsApi } from "./oauthClients";
 export { default as client } from "./client";
 export { intakeApi } from "./intake";

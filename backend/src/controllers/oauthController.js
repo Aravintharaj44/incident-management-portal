@@ -10,11 +10,6 @@ const {
     parseScopes,
 } = require("../services/oauthService");
 
-/**
- * RFC 6749 token-error response for the /oauth/token endpoint. This endpoint
- * deliberately answers with the OAuth standard `{ error, error_description }`
- * shape instead of the app envelope, because external OAuth clients parse it.
- */
 const oauthError = (res, status, error, description) =>
     res.status(status).json({ error, error_description: description });
 
@@ -36,13 +31,6 @@ const parseBasicCredentials = (req) => {
     }
 };
 
-/**
- * POST /api/v1/oauth/token
- *
- * FR5-02 client-credentials grant. Credentials may arrive via the preferred
- * HTTP Basic header and/or the `client_id`/`client_secret` form fields.
- * Success returns the standard `{ access_token, token_type, expires_in }`.
- */
 const token = asyncHandler(async (req, res) => {
     const grantType = req.body && req.body.grant_type;
 
@@ -88,10 +76,6 @@ const token = asyncHandler(async (req, res) => {
 
     const rawScope = req.body && req.body.scope;
 
-    // FR5-03 - scope validation.
-    // No scope param  -> default = all of the client's assigned scopes.
-    // Scope param     -> every requested scope must be both recognized and
-    //                     assigned to this client; no partial grants.
     let grantedScopes;
     if (rawScope === undefined || rawScope === null) {
         grantedScopes = client.scopes || [];

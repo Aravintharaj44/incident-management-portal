@@ -1,12 +1,3 @@
-/**
- * Single source of truth for configuration.
- *
- * Everything the app needs from the environment is read here once, defaulted
- * where it is safe to do so, and validated at boot. No other module reads
- * `process.env` directly, so misconfiguration surfaces immediately at startup
- * instead of as a confusing runtime error later.
- */
-
 const path = require("path");
 
 const os = require("os");
@@ -94,6 +85,9 @@ const env = {
         max: toInt(process.env.RATE_LIMIT_MAX, 1000),
         authMax: toInt(process.env.RATE_LIMIT_AUTH_MAX, 30),
     },
+
+    // FR5-09: daily API credit limit per OAuth client for the public REST API.
+    publicApiDailyCredits: toInt(process.env.PUBLIC_API_DAILY_CREDITS, 1000),
 
     // Set to false to stop the seed script from wiping existing collections.
     seedResetsData: toBool(process.env.SEED_RESET, true),

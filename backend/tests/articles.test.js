@@ -246,9 +246,11 @@ test("FR5-07: token without articles.READ (tickets.ALL client) -> /articles reje
 // ------------------------------------------------------------------
 
 test("FR5-07: list returns the article collection with pagination metadata", async () => {
-    const { status, body } = await api("/articles?page=1&limit=2", { token: ctx.articlesToken });
+    const { status, body } = await api("/articles?from=0&limit=2", { token: ctx.articlesToken });
     assert.equal(status, 200, JSON.stringify(body));
-    assert.equal(body.data.pagination.page, 1);
+    assert.equal(body.data.from, 0);
+    assert.equal(body.data.limit, 2);
+    assert.equal(body.data.pagination.from, 0);
     assert.equal(body.data.pagination.limit, 2);
     assert.ok(body.data.items.length <= 2);
     assert.ok(body.data.pagination.total >= body.data.items.length);

@@ -1,6 +1,7 @@
 const express = require("express");
 
 const authenticate = require("../middleware/authenticate");
+const requireRateLimit = require("../middleware/rateLimitCredits");
 const validate = require("../middleware/validate");
 const requireOAuthScope = require("../middleware/oauthScope");
 
@@ -17,6 +18,7 @@ const {
 const router = express.Router();
 
 router.use(authenticate);
+router.use(requireRateLimit);
 
 /**
  * GET    /api/v1/contacts      -> list End User contacts (from/limit)

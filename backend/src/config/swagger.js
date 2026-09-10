@@ -47,6 +47,22 @@ Access tokens are short-lived (default 3600s), signed with a separate secret,
 and never interchangeable with portal JWTs. The granted scopes (FR5-03) decide
 which endpoints a token can call - the Contacts API currently requires
 \`contacts.READ\`. Create clients with \`npm run oauth:create-client\`.
+
+### Rate Limiting (FR5-09) - daily API credits
+
+Every OAuth-authenticated request to the public REST API (\`/tickets\`,
+\`/contacts\`, \`/articles\`) consumes one daily API credit. Each OAuth client
+has a configurable daily limit (default 1000, set via \`PUBLIC_API_DAILY_CREDITS\`).
+
+All authenticated public API responses include rate-limit headers:
+
+- \`X-RateLimit-Limit\` - the daily credit limit for this client.
+- \`X-RateLimit-Remaining\` - credits remaining today.
+- \`X-RateLimit-Reset\` - seconds until the next UTC day (when credits reset).
+
+When the daily limit is exceeded, the API returns **HTTP 429 Too Many
+Requests** with a \`Retry-After\` header indicating seconds until the next
+reset. Portal JWT requests are not subject to this rate limit.
 `,
         },
         servers: [
@@ -133,16 +149,94 @@ which endpoints a token can call - the Contacts API currently requires
                     },
                     required: ["error"],
                 },
+                OAuthClient: {
+                    type: "object",
+                    description: "Safe representation of an OAuth client (FR5-10). Never contains secret material - the client secret hash is never selected and the plaintext secret is never stored.",
+                    properties: {
+                        id: { type: "string", description: "Mongo ObjectId of the client record." },
+                        clientId: { type: "string", description: "Public client id used to authenticate to the token endpoint." },
+                        name: { type: "string", maxLength: 120, example: "Zoho Sync" },
+                        description: { type: "string", maxLength: 500, nullable: true },
+                        user: {
+                            type: "object",
+                            nullable: true,
+                            description: "Linked service-account user.",
+                            properties: {
+                                id: { type: "string" },
+                                name: { type: "string" },
+                                email: { type: "string" },
+                            },
+                        },
+                        grantTypes: { type: "array", items: { type: "string", enum: ["client_credentials"] } },
+                        scopes: { type: "array", items: { type: "string" }, example: ["tickets.READ", "tickets.WRITE"] },
+                        isActive: { type: "boolean", example: true },
+                        revokedAt: { type: "string", format: "date-time", nullable: true },
+                        createdAt: { type: "string", format: "date-time" },
+                        updatedAt: { type: "string", format: "date-time" },
+                    },
+                    required: ["id", "clientId", "name", "user", "grantTypes", "scopes", "isActive"],
+                },
+                OAuthClientCreateRequest: {
+                    type: "object",
+                    description: "Create an OAuth client. The service account must be an active admin or support_agent.",
+                    required: ["name", "user", "scopes"],
+                    properties: {
+                        name: { type: "string", minLength: 2, maxLength: 120, example: "Zoho Sync" },
+                        description: { type: "string", maxLength: 500, description: "Optional annotation for this client." },
+                        user: { type: "string", description: "ObjectId of the linked service-account user (admin or support_agent)." },
+                        scopes: { type: "array", minItems: 1, items: { type: "string", enum: ["tickets.READ", "tickets.WRITE", "tickets.ALL", "contacts.READ", "contacts.WRITE", "agents.READ", "articles.READ"] }, example: ["tickets.READ"] },
+                    },
+                },
+                OAuthClientUpdateRequest: {
+                    type: "object",
+                    description: "Partial update for an OAuth client. Supply only the fields to change.",
+                    properties: {
+                        name: { type: "string", minLength: 2, maxLength: 120 },
+                        description: { type: "string", maxLength: 500, nullable: true, description: "Pass null to clear the description." },
+                        user: { type: "string", description: "ObjectId of the linked service-account user (admin or support_agent)." },
+                        scopes: { type: "array", minItems: 1, items: { type: "string" } },
+                        isActive: { type: "boolean", description: "Setting false records revokedAt; setting true clears it." },
+                    },
+                },
+                OAuthClientCreateResponse: {
+                    type: "object",
+                    description: "Create response - includes the plaintext client secret exactly once. Copy it down now; it can never be retrieved again.",
+                    properties: {
+                        success: { type: "boolean", example: true },
+                        message: { type: "string", example: "OAuth client created" },
+                        data: {
+                            type: "object",
+                            properties: {
+                                client: { $ref: "#/components/schemas/OAuthClient" },
+                                clientSecret: { type: "string", description: "Plaintext client secret, shown only once on creation." },
+                                note: { type: "string", description: "Reminder that the secret is shown only once." },
+                            },
+                        },
+                    },
+                    required: ["success", "message", "data"],
+                },
+                RateLimitError: {
+                    type: "object",
+                    description: "Returned when the daily OAuth API credit limit is exceeded (HTTP 429).",
+                    properties: {
+                        success: { type: "boolean", example: false },
+                        message: { type: "string", example: "Daily API rate limit exceeded" },
+                    },
+                    required: ["success", "message"],
+                },
                 Pagination: {
                     type: "object",
-                    description: "Pagination metadata returned by list endpoints.",
+                    description: "Pagination metadata returned by list endpoints. Internal endpoints use `page`; the public Zoho-style API (FR5-01/FR5-04/FR5-07/FR5-08) uses `from` (zero-based offset), `limit`, `count`/`total` (records matching the filters) and `hasMore`. Only the keys relevant to the endpoint are returned.",
                     properties: {
                         page: { type: "integer", example: 1 },
+                        from: { type: "integer", example: 0 },
                         limit: { type: "integer", example: 10 },
+                        count: { type: "integer", example: 42 },
                         total: { type: "integer", example: 42 },
                         totalPages: { type: "integer", example: 5 },
                         hasNextPage: { type: "boolean", example: true },
                         hasPrevPage: { type: "boolean", example: false },
+                        hasMore: { type: "boolean", example: true },
                     },
                 },
                 PaginatedResponse: {
@@ -2101,6 +2195,92 @@ Team: {
             },
 
             // ==================================================================
+            // OAuth Client Management (FR5-10) - admin-only
+            // ==================================================================
+            "/oauth/clients": {
+                get: {
+                    tags: ["OAuth"],
+                    summary: "List OAuth clients (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT (not an OAuth token). Paginated list of OAuth clients with optional search (name or clientId) and an isActive filter.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [
+                        { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1 }, description: "Page number (default 1)." },
+                        { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page (default 10, capped at 100)." },
+                        { name: "search", in: "query", required: false, schema: { type: "string", maxLength: 300 }, description: "Substring match on client name or clientId." },
+                        { name: "isActive", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] }, description: "Filter by active/revoked state." },
+                        { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction by creation time (default desc)." },
+                    ],
+                    responses: {
+                        200: { description: "Paginated list of OAuth clients.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/OAuthClient" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                post: {
+                    tags: ["OAuth"],
+                    summary: "Create an OAuth client (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT. Creates a client with a freshly generated clientId and secret, linked to an active staff service account. The plaintext `clientSecret` is returned exactly once in this response and can never be retrieved again.",
+                    security: [{ bearerAuth: [] }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthClientCreateRequest" } } } },
+                    responses: {
+                        201: { description: "OAuth client created with a one-time client secret.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthClientCreateResponse" } } } },
+                        400: { description: "Invalid service account (not found, deactivated, or lacking staff privileges).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/oauth/clients/{id}": {
+                get: {
+                    tags: ["OAuth"],
+                    summary: "Get an OAuth client (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT. Returns the safe representation of one client with its linked service account populated.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "OAuth client id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "OAuth client retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { client: { $ref: "#/components/schemas/OAuthClient" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "OAuth client not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                patch: {
+                    tags: ["OAuth"],
+                    summary: "Update an OAuth client (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT. Partial update of name, description, linked service account, scopes or active state. Setting `isActive` to false records `revokedAt`; setting it to true clears it.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "OAuth client id (Mongo ObjectId)." }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthClientUpdateRequest" } } } },
+                    responses: {
+                        200: { description: "OAuth client updated.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { client: { $ref: "#/components/schemas/OAuthClient" } } } } } } } },
+                        400: { description: "Invalid service account.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "OAuth client not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/oauth/clients/{id}/revoke": {
+                post: {
+                    tags: ["OAuth"],
+                    summary: "Revoke an OAuth client (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT. Revokes the client so it can no longer obtain access tokens and records `revokedAt` for audit. Idempotent - revoking an already-revoked client is a no-op.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "OAuth client id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "OAuth client revoked.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { client: { $ref: "#/components/schemas/OAuthClient" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "OAuth client not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
             // Tickets (FR5-01) - Zoho Desk-compatible adapter over Incidents
             // ==================================================================
             "/tickets": {
@@ -2123,9 +2303,10 @@ Team: {
                         { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
                     ],
                     responses: {
-                        200: { description: "Paginated list of tickets.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { tickets: { type: "array", items: { $ref: "#/components/schemas/Ticket" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        200: { description: "Paginated list of tickets.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { tickets: { type: "array", items: { $ref: "#/components/schemas/Ticket" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, total: { type: "integer" }, hasMore: { type: "boolean" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Insufficient OAuth scope (valid token but missing `tickets.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09). Includes `Retry-After` header with seconds until reset.", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 post: {
@@ -2139,6 +2320,7 @@ Team: {
                         400: { description: "Inactive/non-existent category.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -2155,6 +2337,7 @@ Team: {
                         403: { description: "You do not have access to this ticket, or insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 put: {
@@ -2171,6 +2354,7 @@ Team: {
                         403: { description: "You can only edit this ticket while it is unassigned or still New; or staff-only priority change.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 patch: {
@@ -2187,6 +2371,7 @@ Team: {
                         403: { description: "You can only edit this ticket while it is unassigned or still New; or staff-only priority change.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 delete: {
@@ -2201,6 +2386,7 @@ Team: {
                         403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Ticket not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -2221,9 +2407,10 @@ Team: {
                         { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
                     ],
                     responses: {
-                        200: { description: "Paginated list of contacts.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { contacts: { type: "array", items: { $ref: "#/components/schemas/Contact" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        200: { description: "Paginated list of contacts.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { contacts: { type: "array", items: { $ref: "#/components/schemas/Contact" } }, count: { type: "integer" }, from: { type: "integer" }, limit: { type: "integer" }, pagination: { type: "object", properties: { count: { type: "integer" }, total: { type: "integer" }, hasMore: { type: "boolean" }, from: { type: "integer" }, limit: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Insufficient OAuth scope (valid token but missing `contacts.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09). Includes `Retry-After` header with seconds until reset.", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 post: {
@@ -2237,6 +2424,7 @@ Team: {
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         409: { description: "A contact with that email already exists.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -2253,6 +2441,7 @@ Team: {
                         403: { description: "Insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Contact not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
                 put: {
@@ -2270,6 +2459,7 @@ Team: {
                         404: { description: "Contact not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         409: { description: "A contact with that email already exists.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -2281,20 +2471,21 @@ Team: {
                 get: {
                     tags: ["Articles"],
                     summary: "List published Knowledge Base articles (paginated, with search/category filters)",
-                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `articles.READ` scope). Returns only published Knowledge Base articles using the existing KnowledgeBaseArticle model. Drafts, retired, archived and soft-deleted articles are never exposed. Search reuses the existing KB search behaviour (case-insensitive match on title, body and tags).",
+                    description: "Requires authentication (portal JWT or OAuth 2.0 bearer token with `articles.READ` scope). Returns only published Knowledge Base articles using the existing KnowledgeBaseArticle model. Drafts, retired, archived and soft-deleted articles are never exposed. Search reuses the existing KB search behaviour (case-insensitive match on title, body and tags). Pagination uses `from`/`limit`.",
                     security: [{ bearerAuth: [] }, { oauth2: ["articles.READ"] }],
                     parameters: [
-                        { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1 }, description: "Page number (default 1)." },
+                        { name: "from", in: "query", required: false, schema: { type: "integer", minimum: 0 }, description: "Zero-based offset (default 0)." },
                         { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page (default 10, capped at 100)." },
                         { name: "search", in: "query", required: false, schema: { type: "string", maxLength: 140 }, description: "Case-insensitive search on article title, body or tags." },
                         { name: "categoryId", in: "query", required: false, schema: { type: "string" }, description: "Filter to articles in the given category (Mongo ObjectId)." },
                         { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction (default desc by creation time)." },
                     ],
                     responses: {
-                        200: { description: "Paginated list of published articles.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Article" } }, pagination: { type: "object", properties: { page: { type: "integer" }, limit: { type: "integer" }, total: { type: "integer" }, totalPages: { type: "integer" }, hasNextPage: { type: "boolean" }, hasPrevPage: { type: "boolean" } } } } } } } } } },
+                        200: { description: "Paginated list of published articles.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/Article" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         403: { description: "Insufficient OAuth scope (valid token but missing `articles.READ`).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid query parameters.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09). Includes `Retry-After` header with seconds until reset.", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },
@@ -2311,6 +2502,7 @@ Team: {
                         403: { description: "Insufficient OAuth scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Article not found (or not published).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "Daily API rate limit exceeded (FR5-09).", content: { "application/json": { schema: { $ref: "#/components/schemas/RateLimitError" } } } },
                     },
                 },
             },

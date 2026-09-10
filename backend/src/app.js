@@ -37,7 +37,13 @@ app.use(
             return callback(new Error(`Origin ${origin} is not allowed by CORS`));
         },
         credentials: true,
-        exposedHeaders: ["Content-Disposition"],
+        exposedHeaders: [
+            "Content-Disposition",
+            "X-RateLimit-Limit",
+            "X-RateLimit-Remaining",
+            "X-RateLimit-Reset",
+            "Retry-After",
+        ],
     })
 );
 app.use("/api/webhooks", require("./routes/webhookRoutes"));

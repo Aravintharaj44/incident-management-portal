@@ -6,6 +6,7 @@ const {
     PROBLEM_STATUS_VALUES,
     ACTION_ITEM_STATUS_VALUES,
     KBA_STATUS_VALUE,
+    OAUTH_SCOPE_VALUES,
 } = require("../constants");
 /**
  * Request validation rules (BRD s17: "Validate all inputs on the backend, even
@@ -658,6 +659,94 @@ const knowledgeBaseArticleValidators = {
         query("search").optional().trim().isLength({ max: 140 }).withMessage("Search term is too long"),
     ],
 };
+// FR5-10 - OAuth client management (admin-only). Scopes must be a subset of
+// the registered OAUTH_SCOPE_VALUES so a client can never be granted a scope
+// the application does not understand.
+const oauthClientValidators = {
+    list: [
+        query("page")
+            .optional()
+            .isInt({ min: 1 })
+            .withMessage("Page must be 1 or more"),
+        query("limit")
+            .optional()
+            .isInt({ min: 1, max: 100 })
+            .withMessage("Limit must be between 1 and 100"),
+        query("search")
+            .optional()
+            .trim()
+            .isLength({ max: 300 })
+            .withMessage("Search term is too long"),
+        query("isActive")
+            .optional()
+            .isIn(["true", "false"])
+            .withMessage("isActive must be 'true' or 'false'"),
+        query("sortOrder")
+            .optional()
+            .isIn(["asc", "desc"])
+            .withMessage("sortOrder must be 'asc' or 'desc'"),
+    ],
+
+    create: [
+        body("name")
+            .trim()
+            .isLength({ min: 2, max: 120 })
+            .withMessage("Client name must be between 2 and 120 characters")
+            .customSanitizer(stripTags),
+        body("description")
+            .optional()
+            .trim()
+            .isLength({ max: 500 })
+            .withMessage("Description cannot exceed 500 characters")
+            .customSanitizer(stripTags),
+        body("user").isMongoId().withMessage("Please select a valid service account"),
+        body("grantTypes")
+            .optional()
+            .isArray()
+            .withMessage("grantTypes must be an array")
+            .custom((value) =>
+                Array.isArray(value) &&
+                value.every((item) => item === "client_credentials")
+            )
+            .withMessage("Only the client_credentials grant type is supported"),
+        body("scopes")
+            .isArray({ min: 1 })
+            .withMessage("Select at least one scope"),
+        body("scopes.*")
+            .isIn(OAUTH_SCOPE_VALUES)
+            .withMessage(`Scope must be one of: ${OAUTH_SCOPE_VALUES.join(", ")}`),
+    ],
+
+    update: [
+        objectId("id"),
+        body("name")
+            .optional()
+            .trim()
+            .isLength({ min: 2, max: 120 })
+            .withMessage("Client name must be between 2 and 120 characters")
+            .customSanitizer(stripTags),
+        body("description")
+            .optional({ nullable: true })
+            .trim()
+            .isLength({ max: 500 })
+            .withMessage("Description cannot exceed 500 characters")
+            .customSanitizer(stripTags),
+        body("user").optional().isMongoId().withMessage("Please select a valid service account"),
+        body("scopes")
+            .optional()
+            .isArray({ min: 1 })
+            .withMessage("Select at least one scope"),
+        body("scopes.*")
+            .isIn(OAUTH_SCOPE_VALUES)
+            .withMessage(`Scope must be one of: ${OAUTH_SCOPE_VALUES.join(", ")}`),
+        body("isActive").optional().isBoolean().withMessage("isActive must be true or false"),
+    ],
+
+    revoke: [objectId("id")],
+
+    byId: [objectId("id")],
+};
+
 const submitSurveyValidator =
  [
     body("rating")
@@ -699,5 +788,6 @@ module.exports = {
     knowledgeBaseArticleValidators,
     submitSurveyValidator,
     getCsatTrendValidator,
+    oauthClientValidators,
 };
 

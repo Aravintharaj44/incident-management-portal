@@ -5,18 +5,10 @@ const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 const logger = require("../utils/logger");
 const { successResponse } = require("../utils/apiResponse");
-const { MAX_LIMIT } = require("../utils/pagination");
+const { getFromLimit, buildPaginationMeta } = require("../utils/pagination");
 const { containsPattern } = require("../utils/escapeRegex");
 const { userToContact, contactToUserPayload } = require("../utils/contactMapper");
 const { ROLES } = require("../constants");
-
-const getFromLimit = (query, { defaultLimit = 10 } = {}) => {
-    const from = Math.max(0, Number.parseInt(query.from, 10) || 0);
-    const requestedLimit = Number.parseInt(query.limit, 10) || defaultLimit;
-    const limit = Math.min(MAX_LIMIT, Math.max(1, requestedLimit));
-    return { from, limit, skip: from };
-};
-
 
 const listContacts = asyncHandler(async (req, res) => {
     const filter = { role: ROLES.USER };
@@ -30,7 +22,11 @@ const listContacts = asyncHandler(async (req, res) => {
     const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
 
     const [users, total] = await Promise.all([
-        User.find(filter).sort({ createdAt: sortOrder }).skip(skip).limit(limit).lean(),
+        User.find(filter)
+            .sort({ createdAt: sortOrder, _id: sortOrder })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
         User.countDocuments(filter),
     ]);
 
@@ -41,14 +37,12 @@ const listContacts = asyncHandler(async (req, res) => {
         count: total,
         from,
         limit,
-        pagination: {
-            count: total,
+        pagination: buildPaginationMeta({
             from,
             limit,
-            totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
-            hasNextPage: from + contacts.length < total,
-            hasPrevPage: from > 0,
-        },
+            total,
+            rowCount: contacts.length,
+        }),
     });
 });
 
