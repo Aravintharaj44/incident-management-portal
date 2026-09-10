@@ -269,3 +269,34 @@ export const KBA_STATUS_ORDER = [
 ];
 
 export const KBA_STATUS_OPTIONS = asOptions(KBA_STATUS_LABELS, KBA_STATUS_ORDER);
+
+/* ---------------------------------------------------------------------------
+ * FR5-10 - OAuth Client Management. Mirrors backend OAUTH_SCOPES.
+ * ------------------------------------------------------------------------- */
+
+export const OAUTH_SCOPES = {
+    TICKETS_READ: "tickets.READ",
+    TICKETS_WRITE: "tickets.WRITE",
+    TICKETS_ALL: "tickets.ALL",
+    CONTACTS_READ: "contacts.READ",
+    CONTACTS_WRITE: "contacts.WRITE",
+    AGENTS_READ: "agents.READ",
+    ARTICLES_READ: "articles.READ",
+};
+
+export const OAUTH_SCOPE_VALUES = Object.values(OAUTH_SCOPES);
+
+export const OAUTH_SCOPE_LABELS = {
+    [OAUTH_SCOPES.TICKETS_READ]: "Tickets - Read",
+    [OAUTH_SCOPES.TICKETS_WRITE]: "Tickets - Write",
+    [OAUTH_SCOPES.TICKETS_ALL]: "Tickets - All",
+    [OAUTH_SCOPES.CONTACTS_READ]: "Contacts - Read",
+    [OAUTH_SCOPES.CONTACTS_WRITE]: "Contacts - Write",
+    [OAUTH_SCOPES.AGENTS_READ]: "Agents - Read",
+    [OAUTH_SCOPES.ARTICLES_READ]: "Articles - Read",
+};
+
+export const OAUTH_SCOPE_OPTIONS = OAUTH_SCOPE_VALUES.map((value) => ({
+    value,
+    label: OAUTH_SCOPE_LABELS[value] || value,
+}));

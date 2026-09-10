@@ -42,6 +42,12 @@ const oauthClientSchema = new mongoose.Schema(
             maxlength: [120, "Client name cannot exceed 120 characters"],
         },
 
+        description: {
+            type: String,
+            trim: true,
+            maxlength: [500, "Description cannot exceed 500 characters"],
+        },
+
         // The portal account whose permissions this client acts with.
         user: {
             type: mongoose.Schema.Types.ObjectId,
@@ -76,6 +82,12 @@ const oauthClientSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
             index: true,
+        },
+
+        // Timestamp when the client was revoked, for audit purposes.
+        revokedAt: {
+            type: Date,
+            default: null,
         },
     },
     {
@@ -112,10 +124,12 @@ oauthClientSchema.methods.toPublicJSON = function toPublicJSON() {
         id: this._id,
         clientId: this.clientId,
         name: this.name,
+        description: this.description,
         user: this.user,
         grantTypes: this.grantTypes,
         scopes: this.scopes,
         isActive: this.isActive,
+        revokedAt: this.revokedAt,
         createdAt: this.createdAt,
     };
 };

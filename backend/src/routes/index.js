@@ -17,7 +17,6 @@ const actionItemRoutes = require("./actionItemRoutes");
 const KnowlegdgeBaseArticle = require('./knowledgeBaseArticleRoutes');
 const surveyRoutes = require("./surveyRoutes");
 const oauthRoutes = require("./oauthRoutes");
-
 /**
  * Single mount point for the whole API. app.js only has to mount this one
  * router, so adding a resource never means touching the app bootstrap.

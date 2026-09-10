@@ -38,6 +38,7 @@ const ApiDocsPage = lazy(() => import("./pages/ApiDocsPage"));
 const UsersPage = lazy(() => import("./pages/admin/UsersPage"));
 const CategoriesPage = lazy(() => import("./pages/admin/CategoriesPage"));
 const DepartmentsPage = lazy(() => import("./pages/admin/DepartmentsPage"));
+const OAuthClientsPage = lazy(() => import("./pages/admin/OAuthClientsPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const ForbiddenPage = lazy(() => import("./pages/ForbiddenPage"));
 const SurveyPage = lazy(() => import("./pages/survey/SurveyPage"));
@@ -99,6 +100,7 @@ const App = () => (
                             <Route path="/admin/users" element={<UsersPage />} />
                             <Route path="/admin/categories" element={<CategoriesPage />} />
                             <Route path="/admin/departments" element={<DepartmentsPage />} />
+                            <Route path="/admin/oauth-clients" element={<OAuthClientsPage />} />
                         </Route>
 
                         <Route path="*" element={<NotFoundPage />} />

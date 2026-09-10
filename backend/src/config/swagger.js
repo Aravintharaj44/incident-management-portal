@@ -148,6 +148,72 @@ reset. Portal JWT requests are not subject to this rate limit.
                     },
                     required: ["error"],
                 },
+                OAuthClient: {
+                    type: "object",
+                    description: "Safe representation of an OAuth client (FR5-10). Never contains secret material - the client secret hash is never selected and the plaintext secret is never stored.",
+                    properties: {
+                        id: { type: "string", description: "Mongo ObjectId of the client record." },
+                        clientId: { type: "string", description: "Public client id used to authenticate to the token endpoint." },
+                        name: { type: "string", maxLength: 120, example: "Zoho Sync" },
+                        description: { type: "string", maxLength: 500, nullable: true },
+                        user: {
+                            type: "object",
+                            nullable: true,
+                            description: "Linked service-account user.",
+                            properties: {
+                                id: { type: "string" },
+                                name: { type: "string" },
+                                email: { type: "string" },
+                            },
+                        },
+                        grantTypes: { type: "array", items: { type: "string", enum: ["client_credentials"] } },
+                        scopes: { type: "array", items: { type: "string" }, example: ["tickets.READ", "tickets.WRITE"] },
+                        isActive: { type: "boolean", example: true },
+                        revokedAt: { type: "string", format: "date-time", nullable: true },
+                        createdAt: { type: "string", format: "date-time" },
+                        updatedAt: { type: "string", format: "date-time" },
+                    },
+                    required: ["id", "clientId", "name", "user", "grantTypes", "scopes", "isActive"],
+                },
+                OAuthClientCreateRequest: {
+                    type: "object",
+                    description: "Create an OAuth client. The service account must be an active admin or support_agent.",
+                    required: ["name", "user", "scopes"],
+                    properties: {
+                        name: { type: "string", minLength: 2, maxLength: 120, example: "Zoho Sync" },
+                        description: { type: "string", maxLength: 500, description: "Optional annotation for this client." },
+                        user: { type: "string", description: "ObjectId of the linked service-account user (admin or support_agent)." },
+                        scopes: { type: "array", minItems: 1, items: { type: "string", enum: ["tickets.READ", "tickets.WRITE", "tickets.ALL", "contacts.READ", "contacts.WRITE", "agents.READ", "articles.READ"] }, example: ["tickets.READ"] },
+                    },
+                },
+                OAuthClientUpdateRequest: {
+                    type: "object",
+                    description: "Partial update for an OAuth client. Supply only the fields to change.",
+                    properties: {
+                        name: { type: "string", minLength: 2, maxLength: 120 },
+                        description: { type: "string", maxLength: 500, nullable: true, description: "Pass null to clear the description." },
+                        user: { type: "string", description: "ObjectId of the linked service-account user (admin or support_agent)." },
+                        scopes: { type: "array", minItems: 1, items: { type: "string" } },
+                        isActive: { type: "boolean", description: "Setting false records revokedAt; setting true clears it." },
+                    },
+                },
+                OAuthClientCreateResponse: {
+                    type: "object",
+                    description: "Create response - includes the plaintext client secret exactly once. Copy it down now; it can never be retrieved again.",
+                    properties: {
+                        success: { type: "boolean", example: true },
+                        message: { type: "string", example: "OAuth client created" },
+                        data: {
+                            type: "object",
+                            properties: {
+                                client: { $ref: "#/components/schemas/OAuthClient" },
+                                clientSecret: { type: "string", description: "Plaintext client secret, shown only once on creation." },
+                                note: { type: "string", description: "Reminder that the secret is shown only once." },
+                            },
+                        },
+                    },
+                    required: ["success", "message", "data"],
+                },
                 RateLimitError: {
                     type: "object",
                     description: "Returned when the daily OAuth API credit limit is exceeded (HTTP 429).",
@@ -1944,6 +2010,92 @@ reset. Portal JWT requests are not subject to this rate limit.
                         200: { description: "A bearer access token with granted scopes.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthTokenResponse" } } } },
                         400: { description: "Invalid request - missing/unsupported grant_type or invalid_scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthErrorResponse" } } } },
                         401: { description: "Client credentials are missing or invalid.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
+            // OAuth Client Management (FR5-10) - admin-only
+            // ==================================================================
+            "/oauth/clients": {
+                get: {
+                    tags: ["OAuth"],
+                    summary: "List OAuth clients (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT (not an OAuth token). Paginated list of OAuth clients with optional search (name or clientId) and an isActive filter.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [
+                        { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1 }, description: "Page number (default 1)." },
+                        { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 100 }, description: "Items per page (default 10, capped at 100)." },
+                        { name: "search", in: "query", required: false, schema: { type: "string", maxLength: 300 }, description: "Substring match on client name or clientId." },
+                        { name: "isActive", in: "query", required: false, schema: { type: "string", enum: ["true", "false"] }, description: "Filter by active/revoked state." },
+                        { name: "sortOrder", in: "query", required: false, schema: { type: "string", enum: ["asc", "desc"] }, description: "Sort direction by creation time (default desc)." },
+                    ],
+                    responses: {
+                        200: { description: "Paginated list of OAuth clients.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/OAuthClient" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                post: {
+                    tags: ["OAuth"],
+                    summary: "Create an OAuth client (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT. Creates a client with a freshly generated clientId and secret, linked to an active staff service account. The plaintext `clientSecret` is returned exactly once in this response and can never be retrieved again.",
+                    security: [{ bearerAuth: [] }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthClientCreateRequest" } } } },
+                    responses: {
+                        201: { description: "OAuth client created with a one-time client secret.", content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthClientCreateResponse" } } } },
+                        400: { description: "Invalid service account (not found, deactivated, or lacking staff privileges).", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/oauth/clients/{id}": {
+                get: {
+                    tags: ["OAuth"],
+                    summary: "Get an OAuth client (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT. Returns the safe representation of one client with its linked service account populated.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "OAuth client id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "OAuth client retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { client: { $ref: "#/components/schemas/OAuthClient" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "OAuth client not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                patch: {
+                    tags: ["OAuth"],
+                    summary: "Update an OAuth client (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT. Partial update of name, description, linked service account, scopes or active state. Setting `isActive` to false records `revokedAt`; setting it to true clears it.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "OAuth client id (Mongo ObjectId)." }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/OAuthClientUpdateRequest" } } } },
+                    responses: {
+                        200: { description: "OAuth client updated.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { client: { $ref: "#/components/schemas/OAuthClient" } } } } } } } },
+                        400: { description: "Invalid service account.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "OAuth client not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/oauth/clients/{id}/revoke": {
+                post: {
+                    tags: ["OAuth"],
+                    summary: "Revoke an OAuth client (admin only)",
+                    description: "FR5-10. Requires a portal admin JWT. Revokes the client so it can no longer obtain access tokens and records `revokedAt` for audit. Idempotent - revoking an already-revoked client is a no-op.",
+                    security: [{ bearerAuth: [] }],
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "OAuth client id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "OAuth client revoked.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { client: { $ref: "#/components/schemas/OAuthClient" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "OAuth client not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
                 },
             },

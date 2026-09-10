@@ -20,6 +20,7 @@ import {
     BookOutlined,
     BulbOutlined,
     DashboardOutlined,
+    KeyOutlined,
     LogoutOutlined,
     MenuFoldOutlined,
     MenuUnfoldOutlined,
@@ -130,6 +131,11 @@ const AppLayout = () => {
                             icon: <TeamOutlined />,
                             label: <Link to="/admin/departments">Departments</Link>,
                         },
+                        {
+                            key: "/admin/oauth-clients",
+                            icon: <KeyOutlined />,
+                            label: <Link to="/admin/oauth-clients">API Clients</Link>,
+                        },
                     ],
                 }
             );
@@ -153,6 +159,7 @@ const AppLayout = () => {
         if (pathname.startsWith("/admin/users")) return ["/admin/users"];
         if (pathname.startsWith("/admin/categories")) return ["/admin/categories"];
         if (pathname.startsWith("/admin/departments")) return ["/admin/departments"];
+        if (pathname.startsWith("/admin/oauth-clients")) return ["/admin/oauth-clients"];
 
         return [pathname];
     }, [location]);
