@@ -1,30 +1,26 @@
-const ApiError = require("../utils/ApiError");
+const ApiError = require('../utils/ApiError');
 
-/**
- * Route-level role gate (FR-02).
- *
- * This is the authoritative check - the React app hides menu items for
- * convenience, but the decision is always made here on the server.
- *
- *   router.post("/", protect, authorize(ROLES.ADMIN), handler)
- */
-const authorize =
-    (...allowedRoles) =>
-    (req, _res, next) => {
-        if (!req.user) {
-            return next(ApiError.unauthorized());
-        }
+const roleCheck = (...allowedRoles) => {
+  const roles = allowedRoles.flat().map((r) => String(r).toLowerCase());
 
-        if (!allowedRoles.includes(req.user.role)) {
-            return next(
-                ApiError.forbidden(
-                    "Your role does not have permission to perform this action"
-                )
-            );
-        }
+  return (req, res, next) => {
+    if (!req.user || !req.user.role) {
+      return next(new ApiError(401, 'Authentication required.'));
+    }
 
-        return next();
-    };
+    const userRole = String(req.user.role).toLowerCase();
 
-module.exports = authorize;
-module.exports.authorize = authorize;
+    if (!roles.includes(userRole)) {
+      return next(
+        new ApiError(
+          403,
+          'Forbidden: You do not have permission to access this resource.'
+        )
+      );
+    }
+
+    next();
+  };
+};
+
+module.exports = roleCheck;

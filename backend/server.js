@@ -4,12 +4,15 @@ const app = require("./src/app");
 const { env, validateEnv } = require("./src/config/env");
 const { connectDB, disconnectDB } = require("./src/config/db");
 const logger = require("./src/utils/logger");
+const startEmailIntakeJob = require("./src/cron/emailIntakeJob");
 const {
     startOverdueIncidentJob,
 } = require("./src/cron/overdueIncidentJob");
 const {
     startOverdueActionItemJob,
 } = require("./src/cron/overdueActionItemJob");
+
+const { startEscalationJob } = require("./src/cron/escalationCron");
 
 /**
  * Process bootstrap.
@@ -23,6 +26,8 @@ const startServer = async () => {
         validateEnv();
         await connectDB();
         // startOverdueIncidentJob()
+        startEmailIntakeJob();
+        startEscalationJob();
         // startOverdueActionItemJob()
     } catch (error) {
         logger.error(`Startup failed: ${error.message}`);

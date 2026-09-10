@@ -19,8 +19,10 @@ import {
     BarsOutlined,
     BookOutlined,
     BulbOutlined,
+    CalendarOutlined,
     DashboardOutlined,
     KeyOutlined,
+    InboxOutlined,
     LogoutOutlined,
     MenuFoldOutlined,
     MenuUnfoldOutlined,
@@ -136,6 +138,17 @@ const AppLayout = () => {
                             icon: <KeyOutlined />,
                             label: <Link to="/admin/oauth-clients">API Clients</Link>,
                         },
+                         {
+                            key: "/admin/intake-failures",
+                            icon: <InboxOutlined />,
+                            label: <Link to="/admin/intake-failures">Intake Failures</Link>,
+                        },
+                        {
+                    key: "/on-call",
+                    icon: <CalendarOutlined />,
+                    label: <Link to="/on-call">On-Call Shifts</Link>,
+                },
+
                     ],
                 }
             );
@@ -161,6 +174,8 @@ const AppLayout = () => {
         if (pathname.startsWith("/admin/departments")) return ["/admin/departments"];
         if (pathname.startsWith("/admin/oauth-clients")) return ["/admin/oauth-clients"];
 
+        if (pathname.startsWith("/admin/intake-failures")) return ["/admin/intake-failures"];   // <-- add
+        if (pathname.startsWith("/on-call")) return ["/on-call"];
         return [pathname];
     }, [location]);
 

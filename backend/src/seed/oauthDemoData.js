@@ -21,7 +21,7 @@ const DEMO_OAUTH = {
         name: "Demo Integration Client",
         clientId: "demo-oauth-client",
         clientSecret: "demo-oauth-client-secret",
-        scopes: ["tickets.READ", "tickets.WRITE", "tickets.ALL"],
+        scopes: ["tickets.READ", "tickets.WRITE", "tickets.ALL","agents.READ"],
     },
     // Read-only client for scope restriction tests.
     readOnly: {

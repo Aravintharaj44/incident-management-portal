@@ -12,7 +12,10 @@ const { errorHandler, notFound } = require("./middleware/errorHandler");
 const routes = require("./routes");
 const { STATUS_LABELS, PRIORITY_LABELS, ROLE_LABELS } = require("./constants");
 const slaService = require("./services/slaService");
-
+const onCallRoutes = require("./routes/onCallRoutes"
+    
+);
+const agentRoutes = require("./routes/agentRoutes");
 const app = express();
 
 app.set("trust proxy", 1);
@@ -43,7 +46,7 @@ app.use(
         ],
     })
 );
-
+app.use("/api/webhooks", require("./routes/webhookRoutes"));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
@@ -144,6 +147,8 @@ app.get("/api/v1/meta", (_req, res) => {
         },
     });
 });
+//app.use("/api/intake", intakeRoutes);
+
 
 app.use("/api/v1", routes);
 app.use(notFound);

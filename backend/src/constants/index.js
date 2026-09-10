@@ -94,6 +94,8 @@ const ACTIVITY_ACTIONS = {
     PROBLEM_OWNER_CHANGED: "problem_owner_changed",
     INCIDENT_PROBLEM_LINKED: "incident_problem_linked",
     INCIDENT_PROBLEM_UNLINKED: "incident_problem_unlinked",
+    INTAKE_INCIDENT_CREATED: "intake_incident_created",
+    INTAKE_DUPLICATE_RECEIVED: "intake_duplicate_received",
     // V4 - RCA Action Items (FR4-07..10)
     ACTION_ITEM_CREATED: "action_item_created",
     ACTION_ITEM_UPDATED: "action_item_updated",
@@ -175,6 +177,21 @@ const ROLE_LABELS = {
     [ROLES.USER]: "End User",
 };
 
+const INTAKE_SOURCE = {
+    MANUAL: "Manual",
+    EMAIL: "Email",
+    WEBHOOK: "Webhook",
+};
+
+const INTAKE_SOURCE_VALUES = Object.values(INTAKE_SOURCE);
+
+const INTAKE_SOURCE_LABELS = {
+    [INTAKE_SOURCE.MANUAL]: "Manual",
+    [INTAKE_SOURCE.EMAIL]: "Email",
+    [INTAKE_SOURCE.WEBHOOK]: "Webhook",
+};
+
+
 const ACTION_ITEM_STATUS = {
     OPEN: "open",
     IN_PROGRESS: "in_progress",
@@ -234,6 +251,9 @@ const OAUTH_SCOPES = {
     CONTACTS_WRITE: "contacts.WRITE",
     AGENTS_READ: "agents.READ",
     ARTICLES_READ: "articles.READ",
+    AGENT_READ:"agents.READ",
+    DEPARTMENTS_READ: "departments.READ",
+
 };
 
 const OAUTH_SCOPE_VALUES = Object.values(OAUTH_SCOPES);
@@ -258,6 +278,9 @@ module.exports = {
     PROBLEM_STATUS_VALUES,
     PROBLEM_STATUS_LABELS,
     PROBLEM_STATUS_TRANSITIONS,
+    INTAKE_SOURCE,
+    INTAKE_SOURCE_VALUES,
+    INTAKE_SOURCE_LABELS,
     ACTION_ITEM_STATUS,
     ACTION_ITEM_STATUS_VALUES,
     ACTION_ITEM_STATUS_LABELS,
