@@ -74,6 +74,7 @@ which endpoints a token can call - the Contacts API currently requires
                                 "tickets.ALL": "Full access to tickets (implies READ + WRITE)",
                                 "contacts.READ": "Read access to contacts (FR5-04)",
                                 "agents.READ": "Read access to agents (FR5-05)",
+                                "departments.READ": "Read access to teams/departments (FR5-06)",
                                 "articles.READ": "Read access to articles (FR5-07)",
                             },
                         },
@@ -1167,6 +1168,58 @@ IntakeResolveRequest: {
         resolvedIncidentId: { type: "string", nullable: true, description: "Optional; the incident this failed payload was manually turned into.", example: "64b8f0c2e4a9d1f2a3b4c5d9" },
     },
 },
+
+// ------------------------------------------------------------------
+// Agents (FR5-05)
+// ------------------------------------------------------------------
+Agent: {
+    type: "object",
+    description: "An agent representation (FR5-05). Exposes agent profile and active on-call status.",
+    properties: {
+        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d6" },
+        name: { type: "string", example: "Rahul Verma" },
+        email: { type: "string", format: "email", example: "rahul.agent@zybisys.com" },
+        role: { type: "string", enum: ["admin", "support_agent"], example: "support_agent" },
+        isActive: { type: "boolean", example: true },
+        isOnCall: { type: "boolean", example: false },
+        lastLoginAt: { type: "string", format: "date-time", nullable: true },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+    },
+    required: ["id", "name", "email", "role", "isActive", "isOnCall"],
+},
+
+// ------------------------------------------------------------------
+// Teams (FR5-06) - external representation of Departments
+// ------------------------------------------------------------------
+TeamCategory: {
+    type: "object",
+    description: "A category assigned to a team.",
+    properties: {
+        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d8" },
+        name: { type: "string", example: "Network" },
+        description: { type: "string", example: "Network connectivity, VPN and Wi-Fi issues." },
+        isActive: { type: "boolean", example: true },
+    },
+    required: ["id", "name"],
+},
+Team: {
+    type: "object",
+    description: "A public Team/Department representation (FR5-06). Formatted Department document exposing lookup-relevant fields for external integrations without exposing internal admin fields.",
+    properties: {
+        id: { type: "string", example: "64b8f0c2e4a9d1f2a3b4c5d6" },
+        name: { type: "string", example: "Network Support" },
+        description: { type: "string", example: "Handles infrastructure and network incidents" },
+        isActive: { type: "boolean", example: true },
+        categories: {
+            type: "array",
+            items: { $ref: "#/components/schemas/TeamCategory" },
+        },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+    },
+    required: ["id", "name", "isActive"],
+},
             },
             examples: {
                 NotAuthenticatedExample: {
@@ -1210,6 +1263,8 @@ IntakeResolveRequest: {
             { name: "OnCall", description: "On-call roster scheduling, escalation chains and incident acknowledgement (FR4-21..25)." },
             { name: "Webhooks", description: "Inbound monitoring-alert webhook intake (FR4-17). Verified by HMAC signature, not a bearer token." },
             { name: "Intake", description: "Manual review queue for email/webhook payloads that failed automatic ingestion (FR4-20)." },
+            { name: "Teams", description: "Read-only Teams/Departments API (FR5-06) for external clients to resolve team and category structure." },
+            { name: "Agents", description: "Agents API (FR5-05) for external clients to list and inspect support agents." },
         ],
         paths: {
             // ==================================================================
@@ -3040,7 +3095,7 @@ IntakeResolveRequest: {
         summary: "List all agents",
         description: "Retrieves a paginated list of agents. Requires OAuth2 Bearer token authentication with the 'agents.READ' scope.",
         security: [
-            { OAuth2: ["agents.READ"] }
+            { oauth2: ["agents.READ"] }
         ],
         parameters: [
             { name: "page", in: "query", required: false, schema: { type: "integer", default: 1 }, description: "Page number" },
@@ -3078,7 +3133,7 @@ IntakeResolveRequest: {
         summary: "Get agent by ID",
         description: "Retrieves details of a specific agent. Requires OAuth2 Bearer token authentication with the 'agents.READ' scope.",
         security: [
-            { OAuth2: ["agents.READ"] }
+            { oauth2: ["agents.READ"] }
         ],
         parameters: [
             {
@@ -3113,6 +3168,151 @@ IntakeResolveRequest: {
             403: { description: "Forbidden - Requires 'agents.READ' scope.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/ForbiddenExample" } } } } },
             404: { description: "Agent not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotFoundExample" } } } } },
             422: { description: "Validation failed for agent_id parameter.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } }
+        }
+    }
+},
+// ==================================================================
+// Teams Endpoints (FR5-06)
+// ==================================================================
+"/teams": {
+    get: {
+        tags: ["Teams"],
+        summary: "List all teams",
+        description: "Retrieves a paginated list of teams (departments) with populated categories. Requires OAuth2 Bearer token authentication with the 'departments.READ' scope.",
+        security: [
+            { oauth2: ["departments.READ"] }
+        ],
+        parameters: [
+            { name: "page", in: "query", required: false, schema: { type: "integer", default: 1, minimum: 1 }, description: "Page number (must be >= 1)" },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", default: 20, minimum: 1, maximum: 100 }, description: "Number of items per page (1-100, default 20)" },
+            { name: "isActive", in: "query", required: false, schema: { type: "boolean" }, description: "Filter teams by active status (true or false)" },
+            { name: "search", in: "query", required: false, schema: { type: "string", maxLength: 100 }, description: "Search term to filter teams by title (max 100 chars)" }
+        ],
+        responses: {
+            200: {
+                description: "Teams retrieved successfully.",
+                content: {
+                    "application/json": {
+                        schema: {
+                            type: "object",
+                            properties: {
+                                success: { type: "boolean", example: true },
+                                message: { type: "string", example: "Teams retrieved successfully" },
+                                data: {
+                                    type: "array",
+                                    items: { $ref: "#/components/schemas/Team" }
+                                },
+                                pagination: {
+                                    type: "object",
+                                    properties: {
+                                        page: { type: "integer", example: 1 },
+                                        limit: { type: "integer", example: 20 },
+                                        total: { type: "integer", example: 5 },
+                                        pages: { type: "integer", example: 1 }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            400: {
+                description: "Validation Error - Invalid query parameters.",
+                content: {
+                    "application/json": {
+                        schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+                    }
+                }
+            },
+            401: {
+                description: "Unauthorized - Invalid or missing OAuth Bearer token.",
+                content: {
+                    "application/json": {
+                        schema: { $ref: "#/components/schemas/ApiErrorResponse" },
+                        examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } }
+                    }
+                }
+            },
+            403: {
+                description: "Forbidden - Requires 'departments.READ' scope.",
+                content: {
+                    "application/json": {
+                        schema: { $ref: "#/components/schemas/ApiErrorResponse" },
+                        examples: { default: { $ref: "#/components/examples/ForbiddenExample" } }
+                    }
+                }
+            }
+        }
+    }
+},
+"/teams/{team_id}": {
+    get: {
+        tags: ["Teams"],
+        summary: "Get team by ID",
+        description: "Retrieves details of a specific team (department) including its populated categories. Requires OAuth2 Bearer token authentication with the 'departments.READ' scope.",
+        security: [
+            { oauth2: ["departments.READ"] }
+        ],
+        parameters: [
+            {
+                name: "team_id",
+                in: "path",
+                required: true,
+                schema: { type: "string" },
+                description: "The unique identifier of the team (Mongo ObjectId)."
+            }
+        ],
+        responses: {
+            200: {
+                description: "Team retrieved successfully.",
+                content: {
+                    "application/json": {
+                        schema: {
+                            type: "object",
+                            properties: {
+                                success: { type: "boolean", example: true },
+                                message: { type: "string", example: "Team retrieved successfully" },
+                                data: { $ref: "#/components/schemas/Team" }
+                            }
+                        }
+                    }
+                }
+            },
+            400: {
+                description: "Validation Error - Invalid team ID format.",
+                content: {
+                    "application/json": {
+                        schema: { $ref: "#/components/schemas/ApiErrorResponse" }
+                    }
+                }
+            },
+            401: {
+                description: "Unauthorized - Invalid or missing OAuth Bearer token.",
+                content: {
+                    "application/json": {
+                        schema: { $ref: "#/components/schemas/ApiErrorResponse" },
+                        examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } }
+                    }
+                }
+            },
+            403: {
+                description: "Forbidden - Requires 'departments.READ' scope.",
+                content: {
+                    "application/json": {
+                        schema: { $ref: "#/components/schemas/ApiErrorResponse" },
+                        examples: { default: { $ref: "#/components/examples/ForbiddenExample" } }
+                    }
+                }
+            },
+            404: {
+                description: "Team not found.",
+                content: {
+                    "application/json": {
+                        schema: { $ref: "#/components/schemas/ApiErrorResponse" },
+                        examples: { default: { $ref: "#/components/examples/NotFoundExample" } }
+                    }
+                }
+            }
         }
     }
 },

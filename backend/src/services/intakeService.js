@@ -19,17 +19,18 @@ const DESCRIPTION_MAX = 5000;
  * Helper to safely call whichever log method activityService exports
  */
 async function recordActivity(payload) {
-  if (typeof activityService.createLog === 'function') {
-    return activityService.createLog(payload);
+  try {
+    // Map intake-style keys to the activityService.record() signature
+    return await activityService.record({
+      incident: payload.incidentId || payload.incident,
+      action: payload.action,
+      performedBy: payload.performedBy || process.env.INTAKE_SYSTEM_USER_ID || null,
+      note: payload.details || payload.note || null,
+    });
+  } catch (err) {
+    // Safe fallback — activity logging must never break intake
+    console.log('[intakeService] Activity log write failed, continuing:', err.message);
   }
-  if (typeof activityService.logActivity === 'function') {
-    return activityService.logActivity(payload);
-  }
-  if (typeof activityService.log === 'function') {
-    return activityService.log(payload);
-  }
-  // Safe fallback to console if method is unmapped
-  console.log('[intakeService] Activity logged:', payload);
 }
 
 /**
