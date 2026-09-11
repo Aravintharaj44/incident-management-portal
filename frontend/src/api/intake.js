@@ -13,11 +13,6 @@ export const intakeApi = {
     list: (params = {}) => {
         const queryParams = { ...params };
 
-        // Transform frontend 'Failed' filter to match database 'Flagged' enum
-        if (queryParams.status && queryParams.status.toLowerCase() === "failed") {
-            queryParams.status = "Flagged";
-        }
-
         return client.get("/intake/failures", { params: queryParams }).then((res) => res.data);
     },
 

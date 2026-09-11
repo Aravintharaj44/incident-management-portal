@@ -14,7 +14,7 @@ const listIntakeFailures = asyncHandler(async (req, res) => {
   const filter = {};
 
   if (status) {
-    filter.status = status.toLowerCase() === 'failed' ? 'Flagged' : status;
+    filter.status = status;
   }
 
   if (source) {
