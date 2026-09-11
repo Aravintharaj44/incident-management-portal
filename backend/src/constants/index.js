@@ -258,6 +258,14 @@ const OAUTH_SCOPES = {
 
 const OAUTH_SCOPE_VALUES = Object.values(OAUTH_SCOPES);
 
+const WEBHOOK_EVENTS = {
+    TICKET_CREATED: "ticket.created",
+    TICKET_UPDATED: "ticket.updated",
+    TICKET_RESOLVED: "ticket.resolved",
+};
+ 
+const WEBHOOK_EVENT_VALUES = Object.values(WEBHOOK_EVENTS);
+
 module.exports = {
     ROLES,
     ROLE_VALUES,
@@ -291,4 +299,6 @@ module.exports = {
     SURVEY_STATUS,
     OAUTH_SCOPES,
     OAUTH_SCOPE_VALUES,
+    WEBHOOK_EVENTS,
+    WEBHOOK_EVENT_VALUES,
 };

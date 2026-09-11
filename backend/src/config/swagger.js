@@ -1314,6 +1314,79 @@ Team: {
     },
     required: ["id", "name", "isActive"],
 },
+WebhookSubscription: {
+    type: "object",
+    description: "An outbound webhook subscription for ticket lifecycle events. The signing secret is never included in this representation.",
+    properties: {
+        id: { type: "string", description: "Mongo ObjectId of the subscription." },
+        oauthClient: {
+            oneOf: [
+                { type: "string", description: "Mongo ObjectId of the linked OAuth client." },
+                {
+                    type: "object",
+                    properties: {
+                        _id: { type: "string" },
+                        clientId: { type: "string" },
+                        name: { type: "string" },
+                    },
+                },
+            ],
+        },
+        targetUrl: { type: "string", format: "uri", pattern: "^https://", example: "https://example.com/webhooks/tickets" },
+        events: {
+            type: "array",
+            minItems: 1,
+            items: { type: "string", enum: ["ticket.created", "ticket.updated", "ticket.resolved"] },
+        },
+        description: { type: "string", maxLength: 500, nullable: true },
+        isActive: { type: "boolean", example: true },
+        consecutiveFailures: { type: "integer", example: 0 },
+        disabledAt: { type: "string", format: "date-time", nullable: true },
+        disabledReason: { type: "string", nullable: true },
+        lastDeliveryAt: { type: "string", format: "date-time", nullable: true },
+        lastSuccessAt: { type: "string", format: "date-time", nullable: true },
+        lastFailureAt: { type: "string", format: "date-time", nullable: true },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+    },
+    required: ["id", "oauthClient", "targetUrl", "events", "isActive"],
+},
+WebhookSubscriptionCreateRequest: {
+    type: "object",
+    required: ["oauthClient", "targetUrl", "events"],
+    properties: {
+        oauthClient: { type: "string", description: "Mongo ObjectId of an existing OAuth client." },
+        targetUrl: { type: "string", format: "uri", pattern: "^https://", example: "https://example.com/webhooks/tickets" },
+        events: { type: "array", minItems: 1, items: { type: "string", enum: ["ticket.created", "ticket.updated", "ticket.resolved"] } },
+        description: { type: "string", maxLength: 500 },
+    },
+},
+WebhookSubscriptionUpdateRequest: {
+    type: "object",
+    properties: {
+        oauthClient: { type: "string", description: "Mongo ObjectId of an existing OAuth client." },
+        targetUrl: { type: "string", format: "uri", pattern: "^https://" },
+        events: { type: "array", minItems: 1, items: { type: "string", enum: ["ticket.created", "ticket.updated", "ticket.resolved"] } },
+        description: { type: "string", maxLength: 500 },
+        isActive: { type: "boolean", description: "Reactivating a subscription resets its circuit-breaker state." },
+    },
+},
+WebhookDelivery: {
+    type: "object",
+    properties: {
+        id: { type: "string" },
+        subscription: { type: "string" },
+        event: { type: "string", enum: ["ticket.created", "ticket.updated", "ticket.resolved"] },
+        attempt: { type: "integer", example: 1 },
+        success: { type: "boolean" },
+        statusCode: { type: "integer", nullable: true, example: 200 },
+        errorMessage: { type: "string", nullable: true },
+        durationMs: { type: "integer", nullable: true },
+        payload: { nullable: true, description: "Snapshot of the payload sent to the target URL." },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+    },
+},
             },
             examples: {
                 NotAuthenticatedExample: {
@@ -1356,6 +1429,7 @@ Team: {
             { name: "Meta", description: "Health and reference data." },
             { name: "OnCall", description: "On-call roster scheduling, escalation chains and incident acknowledgement (FR4-21..25)." },
             { name: "Webhooks", description: "Inbound monitoring-alert webhook intake (FR4-17). Verified by HMAC signature, not a bearer token." },
+            { name: "WebhookSubscriptions", description: "Admin-only outbound webhook subscriptions for ticket lifecycle events." },
             { name: "Intake", description: "Manual review queue for email/webhook payloads that failed automatic ingestion (FR4-20)." },
             { name: "Teams", description: "Read-only Teams/Departments API (FR5-06) for external clients to resolve team and category structure." },
             { name: "Agents", description: "Agents API (FR5-05) for external clients to list and inspect support agents." },
@@ -3131,6 +3205,110 @@ Team: {
             401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" }, examples: { default: { $ref: "#/components/examples/NotAuthenticatedExample" } } } } },
             404: { description: "Incident not found.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string", example: "Incident not found" } } } } } },
             500: { description: "Server error (including an internal-consistency check failing to persist the acknowledgement).", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } } } } } },
+        },
+    },
+},
+
+// ==================================================================
+// Outbound webhook subscriptions
+// ==================================================================
+"/oauth/webhooks": {
+    get: {
+        tags: ["WebhookSubscriptions"],
+        summary: "List outbound webhook subscriptions",
+        description: "Requires authentication and the `admin` role. Returns paginated outbound webhook subscriptions.",
+        parameters: [
+            { name: "oauthClient", in: "query", required: false, schema: { type: "string" }, description: "Filter by OAuth client id." },
+            { name: "isActive", in: "query", required: false, schema: { type: "boolean" }, description: "Filter by active status." },
+            { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1, default: 1 } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, default: 10 } },
+        ],
+        responses: {
+            200: { description: "Webhook subscriptions retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/WebhookSubscription" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+    post: {
+        tags: ["WebhookSubscriptions"],
+        summary: "Create an outbound webhook subscription",
+        description: "Requires authentication and the `admin` role. The signing secret is returned exactly once and is never available from a later read operation.",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/WebhookSubscriptionCreateRequest" } } } },
+        responses: {
+            201: { description: "Webhook subscription created. Store `data.secret` securely; it is shown only once.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { webhook: { $ref: "#/components/schemas/WebhookSubscription" }, secret: { type: "string", example: "whsec_..." }, note: { type: "string" } } } } } } } },
+            400: { description: "Invalid OAuth client, target URL, or event list.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+},
+"/oauth/webhooks/{id}": {
+    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Webhook subscription id (Mongo ObjectId)." }],
+    get: {
+        tags: ["WebhookSubscriptions"],
+        summary: "Get an outbound webhook subscription",
+        description: "Requires authentication and the `admin` role. The signing secret is never returned.",
+        responses: {
+            200: { description: "Webhook subscription retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { webhook: { $ref: "#/components/schemas/WebhookSubscription" } } } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            404: { description: "Webhook subscription not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+    patch: {
+        tags: ["WebhookSubscriptions"],
+        summary: "Update an outbound webhook subscription",
+        description: "Requires authentication and the `admin` role. Supply only the fields to change.",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/WebhookSubscriptionUpdateRequest" } } } },
+        responses: {
+            200: { description: "Webhook subscription updated.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { webhook: { $ref: "#/components/schemas/WebhookSubscription" } } } } } } } },
+            400: { description: "Invalid OAuth client, target URL, or event list.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            404: { description: "Webhook subscription not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+    delete: {
+        tags: ["WebhookSubscriptions"],
+        summary: "Delete an outbound webhook subscription",
+        description: "Requires authentication and the `admin` role.",
+        responses: {
+            200: { description: "Webhook subscription deleted.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object" } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            404: { description: "Webhook subscription not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+},
+"/oauth/webhooks/{id}/rotate-secret": {
+    post: {
+        tags: ["WebhookSubscriptions"],
+        summary: "Rotate an outbound webhook signing secret",
+        description: "Requires authentication and the `admin` role. Future deliveries use the new secret; the new secret is returned exactly once.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Webhook subscription id (Mongo ObjectId)." }],
+        responses: {
+            200: { description: "Signing secret rotated. Store `data.secret` securely; it is shown only once.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { webhook: { $ref: "#/components/schemas/WebhookSubscription" }, secret: { type: "string", example: "whsec_..." }, note: { type: "string" } } } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            404: { description: "Webhook subscription not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+        },
+    },
+},
+"/oauth/webhooks/{id}/deliveries": {
+    get: {
+        tags: ["WebhookSubscriptions"],
+        summary: "List webhook delivery attempts",
+        description: "Requires authentication and the `admin` role. Returns paginated delivery attempts for a subscription.",
+        parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" }, description: "Webhook subscription id (Mongo ObjectId)." },
+            { name: "page", in: "query", required: false, schema: { type: "integer", minimum: 1, default: 1 } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, default: 20 } },
+        ],
+        responses: {
+            200: { description: "Webhook deliveries retrieved.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { items: { type: "array", items: { $ref: "#/components/schemas/WebhookDelivery" } }, pagination: { $ref: "#/components/schemas/Pagination" } } } } } } } },
+            401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            403: { description: "Requires the `admin` role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+            404: { description: "Webhook subscription not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
         },
     },
 },

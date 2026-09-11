@@ -15,7 +15,14 @@ const slaService = require("../services/slaService");
 const Attachment = require("../models/Attachment");
 const Comment = require("../models/Comment");
 const IncidentLink = require("../models/IncidentLink");
-const { ROLES, STATUS, ACTIVITY_ACTIONS, PRIORITY_LABELS } = require("../constants");
+const { ROLES, STATUS, ACTIVITY_ACTIONS, PRIORITY_LABELS, WEBHOOK_EVENTS } = require("../constants");
+// Outbound webhook subscriptions - fires ticket.created / ticket.updated to
+// any external system that has subscribed. Fire-and-forget: never awaited,
+// never blocks or fails the ticket request itself. ticket.resolved is NOT
+// fired from this file - status changes (including the New -> ... ->
+// Resolved transition) are handled elsewhere, since this controller
+// deliberately never edits status (see applyTicketUpdate's docs below).
+const { triggerTicketEvent } = require("../services/Webhookservice");
 
 // Reuses the exact same populate set and filter builder as the Incident API so
 // the two surfaces can never drift apart on visibility or reference fields.
@@ -146,6 +153,10 @@ const createTicket = asyncHandler(async (req, res) => {
     });
 
     const created = await Incident.findById(incident._id).populate(POPULATE).lean();
+
+    // Outbound webhooks - notify any subscribed external system. Fired after
+    // everything above has succeeded, never awaited.
+    triggerTicketEvent(WEBHOOK_EVENTS.TICKET_CREATED, incidentToTicket(created));
 
     return successResponse(res, 201, "Ticket created successfully", {
         ticket: incidentToTicket(created),
@@ -281,6 +292,10 @@ const saveUpdatedTicket = async (req, res, incident, auditEntries, message) => {
     logger.event("ticket_updated", { incidentId: incident.id, by: req.user.id });
 
     const updated = await Incident.findById(incident._id).populate(POPULATE).lean();
+
+    // Outbound webhooks - notify any subscribed external system. Shared by
+    // both PUT and PATCH since they both funnel through here.
+    triggerTicketEvent(WEBHOOK_EVENTS.TICKET_UPDATED, incidentToTicket(updated));
 
     return successResponse(res, 200, message, {
         ticket: incidentToTicket(updated),
