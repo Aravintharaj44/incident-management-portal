@@ -20,7 +20,7 @@ const RootCauseAnalysis = require("../models/RootCauseAnalysis");
 const Problem = require("../models/Problem");
 const Department = require("../models/Department");
 const DepartmentUser = require("../models/DepartmentUser");
-const OnCallSchedule  = require("../models/OnCallSchedule");
+const OnCallSchedule = require("../models/OnCallSchedule");
 const KBArticle = require("../models/KnowledgeBaseArticle");
 const {
     ROLES,
@@ -205,7 +205,7 @@ const getIncident = asyncHandler(async (req, res) => {
         Attachment.find({ incident: incident._id })
             .populate("uploadedBy", "name email")
             .sort({ uploadedAt: -1 })
-            .lean(),
+            .lean({ virtuals: true }),
         IncidentLink.countDocuments({ toIncidentId: incident._id, relationshipType: "Child-Of" }),
     ]);
 
@@ -260,114 +260,106 @@ const getIncident = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const createIncident = async (req, res) => {
-  console.log("=== CREATE INCIDENT REQUEST RECEIVED ===");
+    try {
+        const payload = req.body.incident || req.body;
+        let { title, description, category, categoryId, priority } = payload;
 
-  try {
-    const payload = req.body.incident || req.body;
-    let { title, description, category, categoryId, priority } = payload;
+        const selectedCategory = category || categoryId;
+        const categoryDoc = await Category.findById(selectedCategory);
 
-    const selectedCategory = category || categoryId;
+        if (!categoryDoc) {
+            throw ApiError.badRequest("Please choose an active category");
+        }
+        const rawPriority = (priority || "medium").toLowerCase();
+        const validPriorityMap = {
+            critical: PRIORITY?.CRITICAL || "critical",
+            high: PRIORITY?.HIGH || "high",
+            medium: PRIORITY?.MEDIUM || "medium",
+            low: PRIORITY?.LOW || "low",
+        };
+        const targetPriority = validPriorityMap[rawPriority] || validPriorityMap.medium;
+        const departmentObj = await Department.findOne({ categories: selectedCategory });
+        let departmentId = departmentObj ? departmentObj._id : null;
+        let assignedTo = null;
+        if (departmentId && ["critical", "high"].includes(rawPriority)) {
+            const now = new Date();
 
-    if (!selectedCategory) {
-      return res.status(400).json({
-        success: false,
-        message: "Category is required",
-      });
+            let activeShift = await OnCallSchedule.findOne({
+                $or: [{ department: departmentId }, { departmentId: departmentId }],
+                startTime: { $lte: now },
+                endTime: { $gte: now },
+            });
+
+            if (!activeShift) {
+                activeShift = await OnCallSchedule.findOne({
+                    $or: [{ department: departmentId }, { departmentId: departmentId }],
+                }).sort({ createdAt: -1 });
+            }
+
+            console.log("Found Roster Document:", activeShift);
+
+            if (activeShift) {
+                // 1. Check escalationChain array for step 1
+                if (Array.isArray(activeShift.escalationChain) && activeShift.escalationChain.length > 0) {
+                    const step1 = activeShift.escalationChain.find((e) => e.step === 1) || activeShift.escalationChain[0];
+                    assignedTo = step1?.user || step1?.userId || null;
+                }
+
+                // 2. Fallback to root property if escalationChain isn't populated
+                if (!assignedTo) {
+                    assignedTo =
+                        activeShift.level1Responder ||
+                        activeShift.level1 ||
+                        activeShift.user ||
+                        activeShift.assignedUser ||
+                        null;
+                }
+
+                console.log("Assigned Responder User ID:", assignedTo);
+            }
+        }
+        const incident = await Incident.create({
+            title,
+            description,
+            category: selectedCategory,
+            department: departmentId,
+            assignedDepartment: departmentId,
+            assignedTo: assignedTo,
+            priority: targetPriority, 
+            reportedBy: req.user._id,
+            intakeSource: "Manual",
+        });
+        logger.event("incident_created", {
+            incidentId: incident.id,
+            number: incident.incidentNumber,
+            by: req.user.id,
+        });
+
+        await activityService.record({
+            incident: incident._id,
+            action: ACTIVITY_ACTIONS.CREATED,
+            performedBy: req.user._id,
+            note: `Incident raised with ${PRIORITY_LABELS[incident.priority]} priority`,
+        });
+        const staff = await User.find({
+            role: { $in: [ROLES.ADMIN, ROLES.AGENT] },
+            isActive: true,
+        })
+            .select("name email isActive")
+            .lean();
+        notificationService.notifyIncidentCreated({
+            incident,
+            reporter: req.user,
+            recipients: staff,
+        });
+        const created = await Incident.findById(incident._id).populate(POPULATE).lean();
+
+        return successResponse(res, 201, "Incident created successfully", {
+            incident: decorate(created),
+        });
+    } catch (error) {
+        throw ApiError.badRequest(error.message);
     }
-
-    // 1. Normalize priority to lowercase to match PRIORITY_VALUES enum in schema
-    const rawPriority = (priority || "medium").toLowerCase();
-    
-    // Map to exact schema enum values
-    const validPriorityMap = {
-      critical: PRIORITY?.CRITICAL || "critical",
-      high: PRIORITY?.HIGH || "high",
-      medium: PRIORITY?.MEDIUM || "medium",
-      low: PRIORITY?.LOW || "low",
-    };
-
-    const targetPriority = validPriorityMap[rawPriority] || validPriorityMap.medium;
-
-    console.log("Normalized Priority for Schema:", targetPriority);
-
-    // 2. Resolve Department
-    const departmentObj = await Department.findOne({ categories: selectedCategory });
-    let departmentId = departmentObj ? departmentObj._id : null;
-    let assignedTo = null;
-
-    console.log("Resolved Department ID:", departmentId);
-
-    // 3. FR4-22: Auto-Assignment trigger (Checks critical / high)
-   // 3. FR4-22: Auto-Assignment trigger
-if (departmentId && ["critical", "high"].includes(rawPriority)) {
-  const now = new Date();
-
-  let activeShift = await OnCallSchedule.findOne({
-    $or: [{ department: departmentId }, { departmentId: departmentId }],
-    startTime: { $lte: now },
-    endTime: { $gte: now },
-  });
-
-  if (!activeShift) {
-    activeShift = await OnCallSchedule.findOne({
-      $or: [{ department: departmentId }, { departmentId: departmentId }],
-    }).sort({ createdAt: -1 });
-  }
-
-  console.log("Found Roster Document:", activeShift);
-
-  if (activeShift) {
-    // 1. Check escalationChain array for step 1
-    if (Array.isArray(activeShift.escalationChain) && activeShift.escalationChain.length > 0) {
-      const step1 = activeShift.escalationChain.find((e) => e.step === 1) || activeShift.escalationChain[0];
-      assignedTo = step1?.user || step1?.userId || null;
-    }
-
-    // 2. Fallback to root property if escalationChain isn't populated
-    if (!assignedTo) {
-      assignedTo =
-        activeShift.level1Responder ||
-        activeShift.level1 ||
-        activeShift.user ||
-        activeShift.assignedUser ||
-        null;
-    }
-
-    console.log("Assigned Responder User ID:", assignedTo);
-  }
-}
-
-    // 4. Create Incident matching exact schema enum values
-    const newIncident = await Incident.create({
-      title,
-      description,
-      category: selectedCategory,
-      department: departmentId,
-      assignedDepartment: departmentId,
-      assignedTo: assignedTo,
-      priority: targetPriority, // Uses lowercase 'critical' required by schema
-      reportedBy: req.user._id,
-      intakeSource: "Manual",
-    });
-
-    const populatedIncident = await Incident.findById(newIncident._id)
-      .populate("category", "name")
-      .populate("department", "title")
-      .populate("assignedDepartment", "title")
-      .populate("assignedTo", "name email")
-      .populate("reportedBy", "name email");
-
-    return res.status(201).json({
-      success: true,
-      data: populatedIncident,
-    });
-  } catch (error) {
-    console.error("Error creating incident:", error);
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
 };
 /**
  * PATCH /api/v1/incidents/:id
@@ -412,7 +404,9 @@ const updateIncident = asyncHandler(async (req, res) => {
         incident.description = description;
     }
 
-    if (category !== undefined && String(category) !== String(incident.category._id)) {
+    // if (category !== undefined && String(category) !== String(incident.category._id)) {
+    const currentCategoryId = incident.category ? String(incident.category._id) : null;
+    if (category !== undefined && String(category) !== currentCategoryId) {
         const categoryDoc = await Category.findById(category);
         if (!categoryDoc || !categoryDoc.isActive) {
             throw ApiError.badRequest("Please choose an active category");
@@ -423,7 +417,8 @@ const updateIncident = asyncHandler(async (req, res) => {
             action: ACTIVITY_ACTIONS.CATEGORY_CHANGED,
             performedBy: req.user._id,
             field: "category",
-            oldValue: incident.category.name,
+            // oldValue: incident.category.name,
+            oldValue: incident.category ? incident.category.name : "Unassigned",
             newValue: categoryDoc.name,
         });
         incident.category = categoryDoc._id;
@@ -432,7 +427,8 @@ const updateIncident = asyncHandler(async (req, res) => {
         // applies, return the incident to the unassigned queue so an invalid
         // department/member combination cannot persist.
         const currentDepartment = incident.department;
-        if (currentDepartment && currentDepartment.categories) {
+        // if (currentDepartment && currentDepartment.categories) {
+        if (currentDepartment && Array.isArray(currentDepartment.categories)) {
             const stillValid =
                 currentDepartment.isActive &&
                 currentDepartment.categories.some(

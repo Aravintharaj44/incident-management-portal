@@ -51,7 +51,7 @@ const IncidentCreatePage = () => {
     useEffect(() => {
         categoryApi
             .list()
-            .then((response) => setCategories(response.data.categories || response.data))
+            .then((response) => setCategories(response.data.categories))
             .catch((err) => setError(err.message))
             .finally(() => setLoadingCategories(false));
     }, []);
@@ -62,27 +62,21 @@ const IncidentCreatePage = () => {
 
         try {
             const response = await incidentApi.create(values);
-            
-            // SAFELY UNPACK RESPONSE (Handles both response.data.data and response.data.incident)
-            const created = response.data?.data || response.data?.incident || response.data;
-
-            if (!created || !created._id) {
-                throw new Error("Invalid incident data received from server");
-            }
+            const created = response.data.incident;
 
             if (files.length) {
                 try {
                     await attachmentApi.upload(created._id, files);
                 } catch (uploadError) {
                     message.warning(
-                        `${created.incidentNumber || 'Incident'} was created, but the attachments failed: ${uploadError.message}`
+                        `${created.incidentNumber} was created, but the attachments failed: ${uploadError.message}`
                     );
                     navigate(`/incidents/${created._id}`);
                     return;
                 }
             }
 
-            message.success(`${created.incidentNumber || 'Incident'} has been logged`);
+            message.success(`${created.incidentNumber } has been logged`);
             navigate(`/incidents/${created._id}`);
         } catch (err) {
             if (err.errors?.length) {
@@ -107,7 +101,7 @@ const IncidentCreatePage = () => {
             {error && (
                 <Alert
                     type="error"
-                    title={error}
+                    message={error}
                     showIcon
                     closable
                     onClose={() => setError(null)}

@@ -11,7 +11,7 @@ const logger = require('../utils/logger');
  * Follows the same node-cron pattern as cron/overdueIncidentJob.js.
  */
 function startEmailIntakeJob() {
-  const schedule = process.env.INTAKE_POLL_CRON || '*/2 * * * *';
+  const schedule = process.env.INTAKE_POLL_CRON || '* * * * *';
 
   if (!cron.validate(schedule)) {
     logger.error(`[emailIntakeJob] Invalid cron schedule "${schedule}" — job not started.`);

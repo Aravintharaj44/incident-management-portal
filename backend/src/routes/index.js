@@ -52,6 +52,5 @@ router.use("/surveys", surveyRoutes);
 router.use("/oauth", oauthRoutes);
 router.use('/on-call', onCallRoutes);
 router.use("/teams", teamRoutes);
-router.use("/intake", intakeRoutes);
 router.use("/agents", agentRoutes);
 module.exports = router;

@@ -12,10 +12,11 @@ const { Text } = Typography;
 const STATUS_OPTIONS = [
     { value: "", label: "All Statuses" },
     { value: "Failed", label: "Failed" },
-    { value: "Flagged", label: "Flagged" },
+    { value: "Processed", label: "Processed" },
+    { value: "Duplicate", label: "Duplicate" },
+    { value: "Skipped", label: "Skipped" },
     { value: "Reviewed", label: "Reviewed" },
     { value: "Resolved", label: "Resolved" },
-    { value: "Dismissed", label: "Dismissed" },
 ];
 
 /**
@@ -130,9 +131,10 @@ const IntakeFailuresPage = () => {
             width: 110,
             render: (value) => {
                 let color = "default";
-                if (value === "Failed" || value === "Flagged") color = "error";
-                if (value === "Resolved") color = "success";
-                if (value === "Dismissed") color = "warning";
+                if (value === "Failed") color = "error";
+                if (value === "Processed" || value === "Resolved") color = "success";
+                if (value === "Duplicate" || value === "Skipped") color = "blue";
+                if (value === "Reviewed") color = "warning";
                 return <Tag color={color}>{value}</Tag>;
             },
         },
@@ -141,7 +143,7 @@ const IntakeFailuresPage = () => {
             key: "actions",
             width: 180,
             render: (_value, record) =>
-                record.status === "Flagged" || record.status === "Failed" ? (
+                record.status === "Failed" ? (
                     <Space>
                         <Button
                             size="small"

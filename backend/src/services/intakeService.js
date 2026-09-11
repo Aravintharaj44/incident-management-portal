@@ -95,7 +95,7 @@ async function ingestAlert(input) {
       'Incident.category is required by the schema but intake has no category to assign — set INTAKE_DEFAULT_CATEGORY_ID.'
     );
   }
-
+  console.log("Input title: "+ input.title);
   const title = sanitizeTitle(input.title);
   const description = sanitizeDescription(input.description);
 
@@ -157,8 +157,64 @@ async function logFailure({ source, vendor = null, errorReason, rawPayload, stat
   }
 }
 
+/**
+ * FR4-16 — Generic intake log writer.
+ * Unlike logFailure (status always 'Failed'), this accepts any status so
+ * successful, duplicate, and skipped emails all land in the same audit
+ * trail as failures — one table, one place to look.
+ */
+async function recordIntakeLog({
+  source,
+  vendor = null,
+  status,
+  errorReason,
+  rawPayload,
+  messageId = null,
+  fromAddress = null,
+  toAddresses = [],
+  subject = null,
+  resolvedIncidentId = null,
+}) {
+  try {
+    return await IntakeLog.create({
+      source,
+      vendor: vendor || 'generic',
+      status,
+      errorReason: String(errorReason || '').slice(0, 1000),
+      rawPayload: typeof rawPayload === 'object' ? rawPayload : { data: rawPayload },
+      messageId,
+      fromAddress,
+      toAddresses,
+      subject,
+      resolvedIncidentId,
+    });
+  } catch (err) {
+    console.error('[intakeService] Error recording intake log to MongoDB:', err);
+    throw err;
+  }
+}
+
+/**
+ * FR4-16 — Dedup check.
+ * A message counts as "already handled" only if a prior attempt actually
+ * resolved it (Processed/Duplicate/Skipped). A 'Failed' entry does NOT
+ * block a retry — that's what lets a transient failure recover on the
+ * next poll instead of being silently swallowed forever.
+ */
+async function isMessageAlreadyProcessed(source, messageId) {
+  if (!messageId) return false;
+  const existing = await IntakeLog.exists({
+    source,
+    messageId,
+    status: { $in: ['Processed', 'Duplicate', 'Skipped'] },
+  });
+  return Boolean(existing);
+}
+
 module.exports = {
   ingestAlert,
   logFailure,
   findDuplicateIncident,
+  recordIntakeLog,
+  isMessageAlreadyProcessed,
 };

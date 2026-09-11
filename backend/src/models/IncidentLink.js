@@ -9,21 +9,7 @@ const RELATIONSHIP_TYPES = [
 
 const incidentLinkSchema = new mongoose.Schema(
     {
-        /**
-         * Incident from which the relationship was created.
-         *
-         * Related / Duplicate:
-         * Direction is not semantically important.
-         *
-         * Caused-By:
-         * Direction IS important.
-         *
-         * Example:
-         * INC-002 Caused-By INC-001
-         *
-         * fromIncidentId = INC-002
-         * toIncidentId   = INC-001
-         */
+    
         fromIncidentId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Incident",
