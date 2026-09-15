@@ -1,6 +1,8 @@
 require("dotenv").config();
 
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const crypto = require("node:crypto");
 const { env, validateEnv } = require("../config/env");
 const { connectDB, disconnectDB } = require("../config/db");
 const logger = require("../utils/logger");
@@ -754,9 +756,6 @@ const run = async () => {
     await seedIncidents(usersByEmail, categoriesByName, departmentsByCategory);
     await seedProblems(usersByEmail, categoriesByName);
     await seedActionItems(usersByEmail);
-    await seedKBArticles(usersByEmail, categoriesByName);
-    await seedOAuthClients(usersByEmail);
-
     await seedKBArticles(usersByEmail, categoriesByName);
     await seedOAuthClients(usersByEmail);
 

@@ -33,6 +33,28 @@ const env = {
             process.env.OAUTH_ACCESS_TOKEN_SECRET || process.env.JWT_SECRET || "",
     },
 
+    // FR5-13 - SSO via Google OAuth 2.0 (OpenID Connect). Optional: the
+    // portal works fully without it, so no environment validation is enforced
+    // here. If GOOGLE_CLIENT_ID is missing the /auth/google endpoints answer
+    // with 503 and the login button reports that SSO is not configured.
+    google: {
+        clientId: process.env.GOOGLE_CLIENT_ID || "",
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+        redirectUri:
+            process.env.GOOGLE_REDIRECT_URI ||
+            "http://localhost:5000/auth/google/callback",
+    },
+
+    // Where the Google callback redirects the browser after authentication.
+    // Reuses the existing CLIENT_URL convention; FRONTEND_URL overrides it so
+    // production can point at an HTTPS origin independent of the CORS list.
+    frontendUrl:
+        process.env.FRONTEND_URL ||
+        (
+            (process.env.CLIENT_URL || "http://localhost:5173")
+                .split(",")[0] || ""
+        ),
+
     // Comma-separated list so more than one frontend origin can be allowed.
     clientUrls: (process.env.CLIENT_URL || "http://localhost:5173")
         .split(",")

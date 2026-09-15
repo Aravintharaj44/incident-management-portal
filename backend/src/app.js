@@ -122,6 +122,10 @@ app.use(
 );
 
  
+// FR5-13 - Google OAuth 2.0 SSO. Mounted at the app root (not under /api/v1)
+// because the configured GOOGLE_REDIRECT_URI is http://localhost:5000/auth/google/callback.
+app.use("/auth/google", require("./routes/googleAuthRoutes"));
+
 app.get("/api/v1/meta", (_req, res) => {
     res.json({
         success: true,
@@ -151,6 +155,16 @@ app.get("/api/v1/meta", (_req, res) => {
 
 
 app.use("/api/v1", routes);
+app.get('/oauth/callback', async (req, res) => {
+  const authCode = req.query.code;
+ 
+  if (!authCode) {
+    return res.status(400).send('No authorization code provided.');
+  }
+ 
+  console.log('Received Zoho Auth Code:', authCode);
+  res.send('Authorization successful! You can check your backend console for the code.');
+});
 app.use(notFound);
 app.use(errorHandler);
 

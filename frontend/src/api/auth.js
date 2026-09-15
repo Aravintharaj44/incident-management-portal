@@ -1,4 +1,7 @@
-import client from "./client";
+import client, { GOOGLE_AUTH_URL } from "./client";
+
+/** FR5-13 - SSO entry point. Full-page navigation redirects the browser to Google. */
+export const googleAuthStartUrl = GOOGLE_AUTH_URL;
 
 /** Auth endpoints (FR-01). */
 export const authApi = {

@@ -43,6 +43,26 @@ const userSchema = new mongoose.Schema(
             index: true,
         },
 
+        // FR5-13 - Google OpenID Connect subject ("sub") claim, present only
+        // once the account has been linked to a Google identity. Deliberately
+        // NO `default: null`: MongoDB's sparse indexes only skip documents
+        // where the field is *missing*, so persisting null would index every
+        // ordinary user and break the unique constraint. Unlinked users simply
+        // have no googleId path at all - `{ googleId: sub }` lookups only ever
+        // match linked accounts.
+        googleId: {
+            type: String,
+        },
+
+        // How the account is primarily provisioned. Informational only - it is
+        // never used for access control. A locally-provisioned account that is
+        // later linked to Google keeps "local" (password login still works).
+        authProvider: {
+            type: String,
+            enum: ["local", "google"],
+            default: "local",
+        },
+
         lastLoginAt: {
             type: Date,
             default: null,
@@ -70,6 +90,11 @@ userSchema.methods.comparePassword = function comparePassword(candidate) {
     return bcrypt.compare(candidate, this.password);
 };
 
+// FR5-13 - a Google identity can be linked to at most one account. Sparse:
+// documents without a googleId (the overwhelming majority) are not indexed, so
+// ordinary password-only users never conflict.
+userSchema.index({ googleId: 1 }, { unique: true, sparse: true });
+
 /** The safe representation handed to the client. */
 userSchema.methods.toPublicJSON = function toPublicJSON() {
     return {
@@ -78,6 +103,7 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
         email: this.email,
         role: this.role,
         isActive: this.isActive,
+        authProvider: this.authProvider,
         lastLoginAt: this.lastLoginAt,
         createdAt: this.createdAt,
     };
