@@ -209,9 +209,6 @@ const getIncident = asyncHandler(async (req, res) => {
         IncidentLink.countDocuments({ toIncidentId: incident._id, relationshipType: "Child-Of" }),
     ]);
 
-    // FR4-04: an incident linked to a Problem can reference the Problem's RCA
-    // instead of requiring a duplicate one. The problem-scoped RCA is surfaced
-    // read-only when the incident has no RCA of its own.
     let effectiveRca = null;
     if (rca) {
         effectiveRca = rca;
@@ -229,10 +226,7 @@ const getIncident = asyncHandler(async (req, res) => {
         attachments,
         correlation: { childCount, isMajorIncident: incident.isMajorIncident || childCount > 0 },
         rca: effectiveRca,
-        // If a problem RCA is being used because there is no incident RCA, tell
-        // the UI where it came from so it can label it.
         rcaSource: !rca && effectiveRca ? "problem" : "incident",
-        // Lets the UI enable/disable controls using the same rules the API enforces.
         permissions: {
             canEdit: permissions.canEditDetails(req.user, incident),
             canChangeStatus: permissions.canChangeStatus(req.user, incident),
@@ -341,6 +335,7 @@ const createIncident = async (req, res) => {
             performedBy: req.user._id,
             note: `Incident raised with ${PRIORITY_LABELS[incident.priority]} priority`,
         });
+        
         const staff = await User.find({
             role: { $in: [ROLES.ADMIN, ROLES.AGENT] },
             isActive: true,

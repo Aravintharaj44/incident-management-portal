@@ -24,17 +24,6 @@ const OAuthClient = require("../models/OAuthClient");
 const { ROLES, STATUS, PRIORITY, ACTIVITY_ACTIONS, PROBLEM_STATUS, ACTION_ITEM_STATUS, KBA_STATUS } = require("../constants");
 const { DEMO_OAUTH } = require("./oauthDemoData");
 
-/**
- * Seeds a realistic demo data set so the portal can be reviewed without
- * clicking through hours of manual setup.
- *
- *   npm run seed
- *
- * By default it clears the collections first (SEED_RESET=false disables that).
- * Documents are created with `new`/`save()` rather than `insertMany` so the
- * model hooks still run - passwords get hashed and incident numbers get
- * allocated exactly as they would in normal use.
- */
 
 const DEMO_PASSWORD = "Password123";
 
@@ -55,11 +44,6 @@ const CATEGORIES = [
     { name: "Security", description: "Suspected security events and policy violations" },
 ];
 
-/**
- * Incident templates. `ageHours` back-dates createdAt so the seeded data has a
- * realistic spread - including some already-breached SLAs for the dashboard's
- * overdue tile to pick up.
- */
 const INCIDENTS = [
     {
         title: "VPN disconnects every few minutes for the finance team",
@@ -257,11 +241,6 @@ const seedCategories = async (adminId) => {
     return new Map(created.map((category) => [category.name, category]));
 };
 
-/**
- * Demo departments so the assignment workflow (category -> department ->
- * member) can be exercised straight after a fresh seed. Each seeded agent is
- * placed as the member (and head) of the department that owns their work.
- */
 const seedDepartments = async (adminId, usersByEmail, categoriesByName) => {
     const DEPARTMENTS = [
         {
@@ -512,12 +491,6 @@ const seedProblems = async (usersByEmail, categoriesByName) => {
     return { knownError, newProblem };
 };
 
-/**
- * V4 - RCA Action Items demo data (FR4-07..08). Adds approved RCAs where the
- * existing seed has none (the incident-scoped one), then spreads a realistic
- * set of action items across the approved incident- and problem-scoped RCAs so
- * the tracker list, notifications and dashboard widget all have data.
- */
 const seedActionItems = async (usersByEmail) => {
     const admin = usersByEmail.get("admin@zybisys.com");
     const agentRahul = usersByEmail.get("rahul.agent@zybisys.com");
@@ -694,16 +667,6 @@ const seedKBArticles = async (usersByEmail, categoriesByName) => {
     logger.info(`Created ${created} KB articles`);
 };
 
-/**
- * FR5-02/FR5-03 - demo OAuth clients for the public REST API.
- *
- * Creates a "System Integration" service-account agent plus five clients:
- * one active with full ticket scopes (bound to the admin account for the
- * E2E suite), a read-only client, a contacts-only client, an articles-only
- * client (FR5-07), and one revoked client so revocation behavior can be
- * demonstrated.  Credentials come from oauthDemoData (DEMO-ONLY, hashed at
- * rest by the model's pre-save hook).
- */
 const seedOAuthClients = async (usersByEmail) => {
     let serviceAccount = usersByEmail.get(DEMO_OAUTH.serviceAccount.email);
 
@@ -716,9 +679,6 @@ const seedOAuthClients = async (usersByEmail) => {
         });
         await serviceAccount.save();
     }
-
-    // The active demo client is bound to the admin so the E2E suite can
-    // exercise all operations including admin-only delete.
     const admin = usersByEmail.get("admin@zybisys.com");
 
     await OAuthClient.create([

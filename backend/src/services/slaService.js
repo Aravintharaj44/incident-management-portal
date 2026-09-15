@@ -1,13 +1,6 @@
 const { SLA_HOURS, TERMINAL_STATUSES, PRIORITY_LABELS } = require("../constants");
 
-/**
- * SLA helpers (FR-14).
- *
- * The targets themselves live in constants/index.js; this module turns them
- * into the derived values the API and the dashboard need.
- */
 
-/** The Mongo filter that defines "overdue": past due and not yet finished. */
 const overdueFilter = (now = new Date()) => ({
     dueBy: { $lt: now },
     status: { $nin: TERMINAL_STATUSES },

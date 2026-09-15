@@ -122,9 +122,6 @@ const validateEnv = () => {
         );
     }
 
-    // FR5-02: in production the OAuth signing secret must be its own long
-    // random value, so an OAuth access token cannot be forged with the portal
-    // secret and vice versa.
     if (env.isProduction) {
         const oauthSecret = env.oauth.accessTokenSecret;
         if (!oauthSecret || oauthSecret === "" || oauthSecret.length < 32) {

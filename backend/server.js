@@ -14,20 +14,13 @@ const {
 
 const { startEscalationJob } = require("./src/cron/escalationCron");
 
-/**
- * Process bootstrap.
- *
- * Configuration is validated and the database connection is established before
- * the HTTP listener opens, so the server never accepts a request it cannot
- * actually serve.
- */
 const startServer = async () => {
     try {
         validateEnv();
         await connectDB();
         // startOverdueIncidentJob()
-        startEmailIntakeJob();
-        startEscalationJob();
+        // startEmailIntakeJob();
+        // startEscalationJob();
         // startOverdueActionItemJob()
     } catch (error) {
         logger.error(`Startup failed: ${error.message}`);
@@ -39,10 +32,6 @@ const startServer = async () => {
         logger.info(`Allowed client origins: ${env.clientUrls.join(", ")}`);
     });
 
-    /**
-     * Graceful shutdown: stop accepting new connections, let in-flight
-     * requests finish, then close the database handle.
-     */
     const shutdown = async (signal) => {
         logger.info(`${signal} received, shutting down`);
 
@@ -62,8 +51,6 @@ const startServer = async () => {
     process.on("SIGTERM", () => shutdown("SIGTERM"));
     process.on("SIGINT", () => shutdown("SIGINT"));
 
-    // A rejected promise nobody handled leaves the process in an unknown
-    // state - log it loudly and restart rather than limping on.
     process.on("unhandledRejection", (reason) => {
         logger.error("Unhandled promise rejection", reason);
         shutdown("unhandledRejection");

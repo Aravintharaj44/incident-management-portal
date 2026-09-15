@@ -10,8 +10,6 @@ const ApiError = require("../utils/ApiError");
 try {
     fs.mkdirSync(env.upload.dir, { recursive: true });
 } catch (error) {
-    // Swallow here; multer's destination callback will surface a real
-    // error to the request if the directory truly can't be created.
 }
 
 const storage = multer.diskStorage({
