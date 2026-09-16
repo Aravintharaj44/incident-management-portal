@@ -102,6 +102,7 @@ const env = {
         from: process.env.MAIL_FROM || "Incident Portal <no-reply@incident.local>",
     },
 
+    
     rateLimit: {
         windowMinutes: toInt(process.env.RATE_LIMIT_WINDOW_MINUTES, 15),
         max: toInt(process.env.RATE_LIMIT_MAX, 1000),
