@@ -1,0 +1,30 @@
+name: Scheduled Jobs
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes — GitHub's real minimum
+  workflow_dispatch:          # lets you trigger it manually to test
+
+jobs:
+  trigger-crons:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Overdue incidents
+        run: |
+          curl -sf -X GET "${{ secrets.API_BASE_URL }}/api/cron/overdue-incidents" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      - name: Overdue action items
+        run: |
+          curl -sf -X GET "${{ secrets.API_BASE_URL }}/api/cron/overdue-action-items" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      - name: Escalations
+        run: |
+          curl -sf -X GET "${{ secrets.API_BASE_URL }}/api/cron/escalations" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+      - name: Email intake
+        run: |
+          curl -sf -X GET "${{ secrets.API_BASE_URL }}/api/cron/email-intake" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
