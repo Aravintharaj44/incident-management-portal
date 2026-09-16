@@ -118,14 +118,12 @@ app.get("/api/health", (_req, res) => {
 app.use(
     "/api-docs",
     swaggerUi.serve,
-    swaggerUi.setup(swaggerSpec)
+    swaggerUi.setup(swaggerSpec),
 );
+app.get("/api-docs.json", (req, res) => res.json(swaggerSpec));
 
- 
-// FR5-13 - Google OAuth 2.0 SSO. Mounted at the app root (not under /api/v1)
-// because the configured GOOGLE_REDIRECT_URI is http://localhost:5000/auth/google/callback.
 app.use("/auth/google", require("./routes/googleAuthRoutes"));
-
+app.use("/auth/zoho", require("./routes/zohoRoutes"));
 app.get("/api/v1/meta", (_req, res) => {
     res.json({
         success: true,

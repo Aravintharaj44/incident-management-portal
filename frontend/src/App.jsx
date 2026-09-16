@@ -8,6 +8,7 @@ import ErrorBoundary from "./components/common/ErrorBoundary";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import GoogleCallbackPage from "./pages/GoogleCallbackPage";
+import ZohoCallbackPage from "./pages/ZohoCallbackPage";
 import { ROLES } from "./utils/constants";
 import IntakeFailuresPage from './pages/admin/IntakeFailuresPage';
 
@@ -61,6 +62,7 @@ const App = () => (
                 <Route path="/register" element={<RegisterPage />} />
                 {/* FR5-13 - Google SSO lands here after the backend finishes the exchange */}
                 <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
+                <Route path="/auth/zoho/callback" element={<ZohoCallbackPage />} />
                 {/* FR4-26 - Post Resolution Survey */}
                 <Route
                     path="/survey/:token"

@@ -15,3 +15,4 @@ export const authApi = {
 
     changePassword: (payload) => client.patch("/auth/me/password", payload),
 };
+export const zohoAuthStartUrl = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"}/auth/zoho`;

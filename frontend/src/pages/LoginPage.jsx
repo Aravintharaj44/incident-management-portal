@@ -19,8 +19,8 @@ import {
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import AuthShell from "../components/layout/AuthShell";
-import { googleAuthStartUrl } from "../api";
-
+import { googleAuthStartUrl, zohoAuthStartUrl } from "../api";
+import { ZohoIcon } from '../components/zohoIcon/zohoIcon';
 const { Title, Text, Paragraph } = Typography;
 
 /** Small inline "G" so the SSO button looks familiar without a new icon dependency. */
@@ -61,6 +61,7 @@ const LoginPage = () => {
 
     const [submitting, setSubmitting] = useState(false);
     const [googleStarting, setGoogleStarting] = useState(false);
+    const [zohoStarting, setZohoStarting] = useState(false); // ← this was missing
     const [error, setError] = useState(null);
 
     // Already signed in - skip the form entirely.
@@ -98,6 +99,14 @@ const LoginPage = () => {
             window.location.assign(googleAuthStartUrl);
         }
     };
+    const handleZohoStart = () => {
+        if (!zohoStarting) {
+            setZohoStarting(true);
+            setError(null);
+            window.location.assign(zohoAuthStartUrl);
+        }
+    };
+
 
     return (
         <AuthShell>
@@ -172,16 +181,46 @@ const LoginPage = () => {
                     </Text>
                 </Divider>
 
-                <Button
-                    block
-                    size="large"
-                    icon={<GoogleGlyph />}
-                    loading={googleStarting}
-                    onClick={handleGoogleStart}
-                    disabled={submitting}
-                >
-                    Continue with Google
-                </Button>
+                <div style={{ display: "flex", gap: 8 }}>
+                    <Button
+                        size="large"
+                        icon={<GoogleGlyph />}
+                        loading={googleStarting}
+                        onClick={handleGoogleStart}
+                        disabled={submitting}
+                        style={{
+                            flex: 1,
+                            minWidth: 0,
+                            height: "auto",
+                            whiteSpace: "normal",
+                            textAlign: "center",
+                            padding: "8px 6px",
+                            fontSize: 12,
+                            lineHeight: 1.2,
+                        }}
+                    >
+                        Continue with Google
+                    </Button>
+                    <Button
+                        size="large"
+                        icon={<ZohoIcon style={{ fontSize: '18px' }} />}
+                        loading={zohoStarting}
+                        onClick={handleZohoStart}
+                        disabled={submitting}
+                        style={{
+                            flex: 1,
+                            minWidth: 0,
+                            height: "auto",
+                            whiteSpace: "normal",
+                            textAlign: "center",
+                            padding: "8px 6px",
+                            fontSize: 12,
+                            lineHeight: 1.2,
+                        }}
+                    >
+                        Continue with Zoho
+                    </Button>
+                </div>
 
                 <Divider plain style={{ margin: "20px 0 12px" }}>
                     <Text type="secondary" style={{ fontSize: 12 }}>
