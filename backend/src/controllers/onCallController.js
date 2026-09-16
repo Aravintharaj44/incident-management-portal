@@ -3,7 +3,8 @@ const Incident = require("../models/Incident");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const { successResponse } = require("../utils/apiResponse");
-
+const activityLogService = require("../services/activityService");
+const { ACTIVITY_ACTIONS } = require("../constants");
 const createRoster = asyncHandler(async (req, res) => {
     const { department, category, startTime, endTime, ackWindowMinutes, escalationChain } = req.body;
 
@@ -51,6 +52,13 @@ const acknowledgeIncident = async (req, res) => {
                 message: "Acknowledge did not persist — check that acknowledgedAt/acknowledgedBy/isAcknowledged exist on the Incident schema."
             });
         }
+
+        await activityLogService.record({
+            incident: incident._id,
+            action: ACTIVITY_ACTIONS.ACKNOWLEDGED,
+            performedBy: req.user._id,
+            note: `${req.user.name || "Support Agent"} acknowledged the incident alert`
+        })
 
         return res.status(200).json({
             success: true,

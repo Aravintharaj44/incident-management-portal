@@ -5,11 +5,24 @@ import { acknowledgeOnCallIncident } from "../../api/onCallApi";
 
 const { Text } = Typography;
 
-const AcknowledgePanel = ({ incident, onRefresh }) => {
+const AcknowledgePanel = ({ incident, onRefresh, user }) => {
     const [loading, setLoading] = useState(false);
 
-    // HIDE PANEL IF ALREADY ACKNOWLEDGED
-    if (!incident || incident.acknowledgedAt || incident.isAcknowledged) {
+    const allowedRoles = ["admin", "support_agent"];
+
+    // Check if the current user is an admin OR the specific assigned agent
+    const assignedId = incident?.assignedTo?._id || incident?.assignedTo;
+    const currentUserId = user?._id || user?.id;
+    const isAssignedAgentOrAdmin = user?.role === "admin" || (assignedId && currentUserId && assignedId === currentUserId);
+
+    if (
+        !user ||
+        !allowedRoles.includes(user.role) ||
+        !isAssignedAgentOrAdmin || // Hides panel if assigned to someone else
+        !incident ||
+        incident.acknowledgedAt ||
+        incident.isAcknowledged
+    ) {
         return null;
     }
 

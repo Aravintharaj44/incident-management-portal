@@ -87,6 +87,7 @@ const ACTIVITY_ACTIONS = {
     REOPENED: "reopened",
     LINKED: "linked",
     UNLINKED: "unlinked",
+     ACKNOWLEDGED: "acknowledged",
     // V4 - Problem Management (FR4)
     PROBLEM_CREATED: "problem_created",
     PROBLEM_UPDATED: "problem_updated",

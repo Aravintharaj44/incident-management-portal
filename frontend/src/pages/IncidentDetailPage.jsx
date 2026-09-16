@@ -62,7 +62,7 @@ const { TextArea } = Input;
 const IncidentDetailPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { isStaff, isAdmin } = useAuth();
+    const { isStaff, isAdmin, user } = useAuth();
     const { message, modal } = App.useApp();
 
     const [payload, setPayload] = useState(null);
@@ -348,11 +348,12 @@ const IncidentDetailPage = () => {
             )}
 
             {/* --- On-Call & Escalation Controls --- */}
-            <ActiveOnCallAlert 
+            <ActiveOnCallAlert
+                user={user}
                 incident={incident} 
                 onAcknowledgeSuccess={load} 
             />
-            <AcknowledgePanel incident={incident} onRefresh={load} />
+            <AcknowledgePanel incident={incident} onRefresh={load}user={user} />
 
             <Row gutter={[16, 16]}>
                 <Col xs={24} lg={16}>

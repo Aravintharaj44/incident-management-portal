@@ -341,6 +341,19 @@ const createIncident = async (req, res) => {
             performedBy: req.user._id,
             note: `Incident raised with ${PRIORITY_LABELS[incident.priority]} priority`,
         });
+
+        if (assignedTo) {
+            const autoAssignee = await User.findById(assignedTo).select("name").lean();
+            await activityService.record({
+                incident: incident._id,
+                action: ACTIVITY_ACTIONS.ASSIGNED,
+                performedBy: req.user._id,
+                field: "assignedTo",
+                oldValue: "Unassigned",
+                newValue: autoAssignee ? autoAssignee.name : "Unknown",
+                note: "Auto-assigned based on the active on-call schedule",
+            });
+        }
         const staff = await User.find({
             role: { $in: [ROLES.ADMIN, ROLES.AGENT] },
             isActive: true,

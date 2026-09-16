@@ -6,26 +6,49 @@ const departmentSchema = new mongoose.Schema(
             type: String,
             required: [true, "Title is required"],
             trim: true,
-            minlength: [5, "Title must be at least 5 characters"],
             maxlength: [140, "Title cannot exceed 140 characters"],
+            validate: {
+                validator: function(v) {
+                    // Zoho department names (e.g. "IT") can be shorter than
+                    // the 5-char minimum we enforce for titles created
+                    // manually in the portal.
+                    if (this.source === "zoho") return true;
+                    return typeof v === "string" && v.trim().length >= 5;
+                },
+                message: "Title must be at least 5 characters"
+            },
             // index: true,
         },
 
         description: {
             type: String,
-            required: [true, "Description is required"],
             trim: true,
-            minlength: [10, "Description must be at least 10 characters"],
             maxlength: [5000, "Description cannot exceed 5000 characters"],
+            validate: {
+                validator: function(v) {
+                    // Zoho-sourced departments always get a real
+                    // auto-generated description on creation (see
+                    // resolveDepartment() in zohoSyncService.js), so this
+                    // only exists to protect manually-created ones.
+                    if (this.source === "zoho") return true;
+                    return typeof v === "string" && v.trim().length >= 10;
+                },
+                message: "Description must be at least 10 characters"
+            },
         },
 
         // Multiple categories - array of ObjectIds
         categories: {
             type: [mongoose.Schema.Types.ObjectId],
             ref: "Category",
-            required: [true, "At least one category is required"],
+            default: [],
             validate: {
                 validator: function(v) {
+                    // Departments auto-created from Zoho People don't have
+                    // category data available at creation time — an admin
+                    // fills these in later. Any department created through
+                    // the portal itself must still have at least one.
+                    if (this.source === "zoho") return true;
                     return Array.isArray(v) && v.length > 0;
                 },
                 message: "Department must have at least one category"
@@ -37,6 +60,27 @@ const departmentSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
             // index: true,
+        },
+
+        // Where this department record came from: created manually in the
+        // portal, or auto-created / linked because Zoho People sent this
+        // department's data.
+        source: {
+            type: String,
+            enum: ["incident management protal", "zoho"],
+            default: "incident management protal",
+        },
+
+        // Zoho People's own unique ID for this department ("Department.ID"
+        // in the raw API response). null for departments that have never
+        // been linked to a Zoho record. Used as the primary match key
+        // during sync — title is only a fallback, since titles can change
+        // but this ID doesn't.
+        zohoDepartmentId: {
+            type: String,
+            default: null,
+            unique: true,
+            sparse: true, // allows many docs with null, but no two equal non-null values
         },
 
         headOfDepartment: {

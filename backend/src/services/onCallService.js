@@ -21,6 +21,11 @@ const getActiveOnCallUserIds = async () => {
             schedule.escalationChain.forEach((step) => {
                 if (step.user) {
                     onCallUserIds.add(step.user.toString());
+                console.log("User ID:", step.user._id);
+                console.log("User Name:", step.user.name);
+                console.log("User Email:", step.user.email);
+
+
                 }
             });
         }

@@ -1,6 +1,7 @@
 import { Empty, Timeline, Tooltip, Typography } from "antd";
 import {
     BookOutlined,
+    CheckCircleOutlined,
     DisconnectOutlined,
     EditOutlined,
     FileAddOutlined,
@@ -32,6 +33,7 @@ const ACTION_META = {
     reopened: { icon: <RedoOutlined />, color: "red", label: "reopened this incident" },
     linked: { icon: <LinkOutlined />, color: "blue", label: "linked this incident" },
     unlinked: { icon: <DisconnectOutlined />, color: "grey", label: "removed an incident link" },
+    acknowledged: { icon: <CheckCircleOutlined />, color: "green", label: "acknowledged this on-call alert" },
     // V4 - Problem Management (FR4)
     problem_created: { icon: <PlusCircleOutlined />, color: "blue", label: "created this problem" },
     problem_updated: { icon: <EditOutlined />, color: "blue", label: "updated the problem" },

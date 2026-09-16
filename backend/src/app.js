@@ -13,7 +13,7 @@ const routes = require("./routes");
 const { STATUS_LABELS, PRIORITY_LABELS, ROLE_LABELS } = require("./constants");
 const slaService = require("./services/slaService");
 const onCallRoutes = require("./routes/onCallRoutes"
-    
+
 );
 const agentRoutes = require("./routes/agentRoutes");
 const app = express();
@@ -121,7 +121,7 @@ app.use(
     swaggerUi.setup(swaggerSpec)
 );
 
- 
+
 app.get("/api/v1/meta", (_req, res) => {
     res.json({
         success: true,
@@ -151,7 +151,18 @@ app.get("/api/v1/meta", (_req, res) => {
 
 
 app.use("/api/v1", routes);
+
+// Express.js Route
+app.get('/oauth/callback', async (req, res) => {
+    const authCode = req.query.code;
+
+    if (!authCode) {
+        return res.status(400).send('No authorization code provided.');
+    }
+
+    console.log('Received Zoho Auth Code:', authCode);
+    res.send('Authorization successful! You can check your backend console for the code.');
+});
 app.use(notFound);
 app.use(errorHandler);
-
 module.exports = app;

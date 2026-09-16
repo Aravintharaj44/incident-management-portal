@@ -5,17 +5,25 @@ import { acknowledgeOnCallIncident } from "../../api/onCallApi";
 
 const { Text, Title } = Typography;
 
-const ActiveOnCallAlert = ({ incident, onAcknowledgeSuccess }) => {
+const ActiveOnCallAlert = ({ incident, onAcknowledgeSuccess, user }) => {
     const [loading, setLoading] = useState(false);
     const [isAcked, setIsAcked] = useState(!!incident?.acknowledgedAt);
 
-    // Sync state whenever incident prop updates from parent re-fetch
     useEffect(() => {
         setIsAcked(!!incident?.acknowledgedAt || !!incident?.isAcknowledged);
     }, [incident]);
 
-    // Hide component if incident is missing, closed, or acknowledged
+    const allowedRoles = ["admin", "support_agent"];
+
+    // Role & Assignment verification
+    const assignedId = incident?.assignedTo?._id || incident?.assignedTo;
+    const currentUserId = user?._id || user?.id;
+    const isAssignedAgentOrAdmin = user?.role === "admin" || (assignedId && currentUserId && assignedId === currentUserId);
+
     if (
+        !user || 
+        !allowedRoles.includes(user.role) ||
+        !isAssignedAgentOrAdmin ||
         !incident ||
         incident.status === "Closed" ||
         incident.acknowledgedAt ||
@@ -25,9 +33,12 @@ const ActiveOnCallAlert = ({ incident, onAcknowledgeSuccess }) => {
         return null;
     }
 
-    const ackDeadline =
-        new Date(incident.lastEscalatedAt || incident.createdAt).getTime() +
-        (incident.ackWindowMinutes || 15) * 60 * 1000;
+    // Calculate actual timestamp deadline relative to when last escalated or created
+    const baseTime = new Date(incident.lastEscalatedAt || incident.createdAt).getTime();
+    const ackWindowMs = (incident.ackWindowMinutes || 15) * 60 * 1000;
+    const ackDeadline = baseTime + ackWindowMs;
+    
+    // Check if the 15-minute window from escalation/creation has already passed
     const isPastDeadline = Date.now() >= ackDeadline;
 
     const handleAcknowledge = async () => {

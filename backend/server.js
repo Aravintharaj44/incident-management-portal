@@ -13,7 +13,7 @@ const {
 } = require("./src/cron/overdueActionItemJob");
 
 const { startEscalationJob } = require("./src/cron/escalationCron");
-
+const zohoSyncJob = require("./src/cron/zohoSyncJob");
 /**
  * Process bootstrap.
  *
@@ -28,6 +28,7 @@ const startServer = async () => {
         // startOverdueIncidentJob()
         startEmailIntakeJob();
         startEscalationJob();
+        zohoSyncJob.start(); 
         // startOverdueActionItemJob()
     } catch (error) {
         logger.error(`Startup failed: ${error.message}`);
