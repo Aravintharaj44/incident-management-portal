@@ -3,7 +3,7 @@ const emailIntakeService = require('../services/emailIntakeService');
 const logger = require('../utils/logger');
 
 function startEmailIntakeJob() {
-  const schedule = process.env.INTAKE_POLL_CRON || '* * * * *';
+  const schedule = process.env.INTAKE_POLL_CRON || '*/2 * * * *';
 
   if (!cron.validate(schedule)) {
     logger.error(`[emailIntakeJob] Invalid cron schedule "${schedule}" — job not started.`);

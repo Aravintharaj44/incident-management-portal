@@ -85,6 +85,8 @@ const authLimiter = rateLimit({
         message: "Too many login attempts. Please try again in a few minutes.",
     },
 });
+const cronRoutes = require("./routes/cronRoutes");
+app.use("/api/cron", cronRoutes);
 
 app.use("/api", apiLimiter);
 app.use("/api/v1/auth/login", authLimiter);
