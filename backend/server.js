@@ -18,10 +18,10 @@ const startServer = async () => {
     try {
         validateEnv();
         await connectDB();
-        // startOverdueIncidentJob()
-        // startEmailIntakeJob();
-        // startEscalationJob();
-        // startOverdueActionItemJob()
+        startOverdueIncidentJob();
+        startEmailIntakeJob();
+        startEscalationJob();
+        startOverdueActionItemJob();
     } catch (error) {
         logger.error(`Startup failed: ${error.message}`);
         process.exit(1);
