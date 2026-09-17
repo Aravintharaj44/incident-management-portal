@@ -20,7 +20,7 @@ const {
     ACTION_ITEM_STATUS_VALUES,
     ACTION_ITEM_STATUS_LABELS,
 } = require("../constants");
-
+const Logger = require("../utils/logger");
 
 /** Turns [{_id, count}] into a dense series with zeros for missing buckets. */
 const densify = (rows, keys, labels) => {
@@ -173,11 +173,10 @@ const getCharts = asyncHandler(async (req, res) => {
             },
         ]),
     ]);
-
+    
     const categoryNames = new Map(
         categories.map((category) => [String(category._id), category.name])
     );
-
     const byCategory = categoryRows.map((row) => ({
         key: String(row._id),
         label: categoryNames.get(String(row._id)) || "Uncategorised",

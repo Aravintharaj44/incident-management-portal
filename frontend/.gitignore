@@ -16,3 +16,5 @@ Thumbs.db
 .vscode/
 *.local
 .env.example
+src/test/
+coverage/
