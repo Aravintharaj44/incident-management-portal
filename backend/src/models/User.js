@@ -42,6 +42,21 @@ const userSchema = new mongoose.Schema(
             default: true,
             index: true,
         },
+        zohoId: {
+            type: String,
+        },
+        googleId: {
+            type: String,
+        },
+
+        // How the account is primarily provisioned. Informational only - it is
+        // never used for access control. A locally-provisioned account that is
+        // later linked to Google keeps "local" (password login still works).
+        authProvider: {
+            type: String,
+            enum: ["local", "google", "zoho"],
+            default: "local",
+        },
 
         lastLoginAt: {
             type: Date,
@@ -75,6 +90,8 @@ userSchema.pre("save", async function hashPassword() {
 userSchema.methods.comparePassword = function comparePassword(candidate) {
     return bcrypt.compare(candidate, this.password);
 };
+userSchema.index({ googleId: 1 }, { unique: true, sparse: true });
+userSchema.index({ zohoId: 1 }, { unique: true, sparse: true });
 
 /** The safe representation handed to the client. */
 userSchema.methods.toPublicJSON = function toPublicJSON() {
@@ -84,6 +101,7 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
         email: this.email,
         role: this.role,
         isActive: this.isActive,
+        authProvider: this.authProvider,
         lastLoginAt: this.lastLoginAt,
         createdAt: this.createdAt,
     };

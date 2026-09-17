@@ -1413,7 +1413,7 @@ WebhookDelivery: {
         },
         security: [{ bearerAuth: [] }],
         tags: [
-            { name: "Auth", description: "Registration, login and the current-user account." },
+            { name: "Auth", description: "Registration, login and the current-user account. Google SSO (FR5-13) is served at the app root (e.g. /auth/google and /auth/google/callback), not under this /api/v1 prefix." },
             { name: "Users", description: "User administration (admin)." },
             { name: "Categories", description: "Incident category master list." },
             { name: "Departments", description: "Support departments and their memberships." },
@@ -1518,6 +1518,45 @@ WebhookDelivery: {
                         400: { description: "Current password incorrect or new password not different.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            // ==================================================================
+            // Google SSO (FR5-13) - served at the app ROOT, not under /api/v1.
+            // The paths below are shown relative to the documented server, but
+            // the real browser flow is http://<host>/auth/google and
+            // http://<host>/auth/google/callback.
+            // ==================================================================
+            "/auth/google": {
+                get: {
+                    tags: ["Auth"],
+                    summary: "Start Google sign-in (SSO, FR5-13)",
+                    description: "Public browser endpoint. Generates a cryptographically random state value, builds a Google OAuth 2.0 authorization URL requesting only the `openid email profile` scopes, and **redirects the browser (HTTP 302) to Google**. It does not return JSON. After the user authenticates with Google, the browser returns to `GET /auth/google/callback`. Returns 503 when Google sign-in is not configured (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` missing).",
+                    security: [],
+                    responses: {
+                        302: {
+                            description: "Redirect to Google's authorization server (`https://accounts.google.com/o/oauth2/v2/auth?...`) with `response_type=code` and a `state` value the callback will validate.",
+                        },
+                        503: { description: "Google sign-in is not configured by the administrator.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/auth/google/callback": {
+                get: {
+                    tags: ["Auth"],
+                    summary: "Google OAuth callback (SSO, FR5-13)",
+                    description: "Public browser endpoint - this is the registered `GOOGLE_REDIRECT_URI`. Receives `code` and `state` from Google, **validates the state** (must match one the server issued, single-use), exchanges the authorization code with Google, verifies the returned ID token (signature, issuer, audience, `email_verified`), matches or provisions an application user without ever elevating roles, then **redirects the browser back to the frontend callback page** with the application's regular JWT (`?token=...`) so the existing session mechanism takes over. All failures redirect to the same frontend page with an `error=<code>` query parameter (`access_denied`, `invalid_state`, `token_exchange_failed`, `verification_failed`, `unverified_email`, `account_inactive`, `email_in_use`). The Google client secret and Google tokens are never exposed in any response.",
+                    security: [],
+                    parameters: [
+                        { name: "code", in: "query", required: false, schema: { type: "string" }, description: "The authorization code issued by Google after consent." },
+                        { name: "state", in: "query", required: false, schema: { type: "string" }, description: "The state value returned by `GET /auth/google`; validated before the code is exchanged." },
+                        { name: "error", in: "query", required: false, schema: { type: "string" }, description: "Present when Google refused consent (e.g. `access_denied`)." },
+                    ],
+                    responses: {
+                        302: {
+                            description: "Redirect to the frontend. On success: `<frontend>/auth/google/callback?token=<JWT>` establishing the same application session as password login. On failure: `<frontend>/auth/google/callback?error=<code>`.",
+                        },
                     },
                 },
             },

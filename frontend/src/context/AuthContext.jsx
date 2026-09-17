@@ -77,6 +77,25 @@ export const AuthProvider = ({ children }) => {
         return registered;
     }, []);
 
+    /**
+     * FR5-13 - finishes a Google SSO round trip. The portal JWT handed back by the
+     * callback is trusted the same way a /auth/login response is, and the user is
+     * re-fetched from the server so roles/permissions are always authoritative.
+     */
+    const completeGoogleLogin = useCallback(async (token) => {
+        setStoredToken(token);
+        try {
+            const response = await authApi.getMe();
+            setUser(response.data.user);
+            return response.data.user;
+        } catch (error) {
+            // Never retain a token from an incomplete or rejected SSO login.
+            clearStoredToken();
+            setUser(null);
+            throw error;
+        }
+    }, []);
+
     const updateProfile = useCallback(async (payload) => {
         const response = await authApi.updateProfile(payload);
         setUser(response.data.user);
@@ -101,11 +120,12 @@ export const AuthProvider = ({ children }) => {
             isStaff: user?.role === ROLES.ADMIN || user?.role === ROLES.AGENT,
             login,
             register,
+            completeGoogleLogin,
             logout,
             updateProfile,
             changePassword,
         }),
-        [user, isLoading, login, register, logout, updateProfile, changePassword]
+        [user, isLoading, login, register, completeGoogleLogin, logout, updateProfile, changePassword]
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

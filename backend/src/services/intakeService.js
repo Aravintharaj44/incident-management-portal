@@ -1,7 +1,7 @@
 const Incident = require('../models/Incident');
 const IntakeLog = require('../models/IntakeLog');
 const activityService = require('./activityService');
-const { TERMINAL_STATUSES, PRIORITY_VALUES, ACTIVITY_ACTIONS, INTAKE_SOURCE_LABELS } = require('../constants');
+const { TERMINAL_STATUSES,PRIORITY, PRIORITY_VALUES, ACTIVITY_ACTIONS, INTAKE_SOURCE_LABELS } = require('../constants');
 
 /**
  * intakeService
@@ -24,7 +24,7 @@ async function recordActivity(payload) {
     return await activityService.record({
       incident: payload.incidentId || payload.incident,
       action: payload.action,
-      performedBy: payload.performedBy || process.env.INTAKE_SYSTEM_USER_ID || null,
+      performedBy: payload.performedBy || null,
       note: payload.details || payload.note || null,
     });
   } catch (err) {
@@ -106,21 +106,15 @@ async function ingestAlert(input) {
       `${existing.description}\n\n---\n[${new Date().toISOString()}] Duplicate ${INTAKE_SOURCE_LABELS[intakeSource] || intakeSource} alert received:\n${description}`
     );
     await existing.save();
-
-    await recordActivity({
-      incidentId: existing._id,
-      action: ACTIVITY_ACTIONS.INTAKE_DUPLICATE_RECEIVED || 'INTAKE_DUPLICATE_RECEIVED',
-      details: `Repeated ${INTAKE_SOURCE_LABELS[intakeSource] || intakeSource} alert${vendor ? ` (${vendor})` : ''} matched this open incident instead of creating a duplicate.`,
-    });
-
     return { incident: existing, created: false };
   }
-
+  console.log("priority: "+priority);
   const incident = await Incident.create({
     title,
     description,
     category,
-    priority: sanitizePriority(priority),
+    // priority: sanitizePriority(priority),
+    priority: PRIORITY.MEDIUM,
     intakeSource,
     dedupeKey: dedupeKey || null,
     reportedBy,
@@ -129,6 +123,7 @@ async function ingestAlert(input) {
   await recordActivity({
     incidentId: incident._id,
     action: ACTIVITY_ACTIONS.INTAKE_INCIDENT_CREATED || 'INTAKE_INCIDENT_CREATED',
+    performedBy: reportedBy,
     details: `Incident auto-created from ${INTAKE_SOURCE_LABELS[intakeSource] || intakeSource} intake${vendor ? ` (${vendor})` : ''}.`,
   });
 

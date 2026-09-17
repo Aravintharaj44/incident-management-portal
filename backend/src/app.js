@@ -85,6 +85,8 @@ const authLimiter = rateLimit({
         message: "Too many login attempts. Please try again in a few minutes.",
     },
 });
+const cronRoutes = require("./routes/cronRoutes");
+app.use("/api/cron", cronRoutes);
 
 app.use("/api", apiLimiter);
 app.use("/api/v1/auth/login", authLimiter);
@@ -118,10 +120,13 @@ app.get("/api/health", (_req, res) => {
 app.use(
     "/api-docs",
     swaggerUi.serve,
-    swaggerUi.setup(swaggerSpec)
+    swaggerUi.setup(swaggerSpec),
 );
+app.get("/api-docs.json", (req, res) => res.json(swaggerSpec));
 
 
+app.use("/auth/google", require("./routes/googleAuthRoutes"));
+app.use("/auth/zoho", require("./routes/zohoRoutes"));
 app.get("/api/v1/meta", (_req, res) => {
     res.json({
         success: true,
@@ -151,17 +156,15 @@ app.get("/api/v1/meta", (_req, res) => {
 
 
 app.use("/api/v1", routes);
-
-// Express.js Route
 app.get('/oauth/callback', async (req, res) => {
-    const authCode = req.query.code;
-
-    if (!authCode) {
-        return res.status(400).send('No authorization code provided.');
-    }
-
-    console.log('Received Zoho Auth Code:', authCode);
-    res.send('Authorization successful! You can check your backend console for the code.');
+  const authCode = req.query.code;
+ 
+  if (!authCode) {
+    return res.status(400).send('No authorization code provided.');
+  }
+ 
+  console.log('Received Zoho Auth Code:', authCode);
+  res.send('Authorization successful! You can check your backend console for the code.');
 });
 app.use(notFound);
 app.use(errorHandler);

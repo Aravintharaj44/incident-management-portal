@@ -33,6 +33,28 @@ const env = {
             process.env.OAUTH_ACCESS_TOKEN_SECRET || process.env.JWT_SECRET || "",
     },
 
+    google: {
+        clientId: process.env.GOOGLE_CLIENT_ID || "",
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+        redirectUri:
+            process.env.GOOGLE_REDIRECT_URI ||
+            "http://localhost:5000/auth/google/callback",
+    },
+
+    zoho: {
+        clientId: process.env.ZOHO_CLIENT_ID,
+        clientSecret: process.env.ZOHO_CLIENT_SECRET,
+        redirectUri: process.env.ZOHO_REDIRECT_URI,
+        accountsUrl: process.env.ZOHO_ACCOUNTS_URL || "https://accounts.zoho.in",
+    },
+
+    frontendUrl:
+        process.env.FRONTEND_URL ||
+        (
+            (process.env.CLIENT_URL || "http://localhost:5173")
+                .split(",")[0] || ""
+        ),
+
     // Comma-separated list so more than one frontend origin can be allowed.
     clientUrls: (process.env.CLIENT_URL || "http://localhost:5173")
         .split(",")
@@ -80,6 +102,7 @@ const env = {
         from: process.env.MAIL_FROM || "Incident Portal <no-reply@incident.local>",
     },
 
+    
     rateLimit: {
         windowMinutes: toInt(process.env.RATE_LIMIT_WINDOW_MINUTES, 15),
         max: toInt(process.env.RATE_LIMIT_MAX, 1000),
@@ -122,9 +145,6 @@ const validateEnv = () => {
         );
     }
 
-    // FR5-02: in production the OAuth signing secret must be its own long
-    // random value, so an OAuth access token cannot be forged with the portal
-    // secret and vice versa.
     if (env.isProduction) {
         const oauthSecret = env.oauth.accessTokenSecret;
         if (!oauthSecret || oauthSecret === "" || oauthSecret.length < 32) {

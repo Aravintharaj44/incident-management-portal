@@ -9,6 +9,21 @@ import axios from "axios";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
 
+/**
+ * Origin of the API - used for endpoints that live outside the /api/v1
+ * namespace (relative VITE_API_URL values fall back to the app's own origin).
+ */
+export const API_ORIGIN = (() => {
+    try {
+        return new URL(BASE_URL).origin;
+    } catch {
+        return window.location.origin;
+    }
+})();
+
+/** FR5-13 - SSO start endpoint, at the API root so Google's exact redirect URI matches. */
+export const GOOGLE_AUTH_URL = `${API_ORIGIN}/auth/google`;
+
 export const TOKEN_KEY = "imp_token";
 
 export const getStoredToken = () => localStorage.getItem(TOKEN_KEY);

@@ -2,11 +2,6 @@ const mongoose = require("mongoose");
 const { env } = require("./env");
 const logger = require("../utils/logger");
 
-/**
- * Opens the MongoDB connection and wires up connection-level event logging so
- * a dropped database is visible in the logs rather than silently failing on
- * the next query.
- */
 const connectDB = async () => {
     // Reject queries against fields that are not in the schema instead of
     // silently ignoring them - catches typos early.

@@ -1,5 +1,5 @@
 /** One import site for every API module. */
-export { authApi } from "./auth";
+export { authApi, googleAuthStartUrl , zohoAuthStartUrl } from "./auth";
 export { incidentApi } from "./incidents";
 export { commentApi } from "./comments";
 export { attachmentApi } from "./attachments";
