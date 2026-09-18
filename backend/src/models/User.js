@@ -62,12 +62,12 @@ const userSchema = new mongoose.Schema(
             type: Date,
             default: null,
         },
-        zohoId: {
-            type: String,
-            default: null,
-            index: true,
-            sparse: true,   // local (non-Zoho) users won't have this field at all
-        },
+        // zohoId: {
+        //     type: String,
+        //     default: null,
+        //     index: true,
+        //     sparse: true,   // local (non-Zoho) users won't have this field at all
+        // },
     },
     {
         timestamps: true,

@@ -20,7 +20,7 @@ const RootCauseAnalysis = require("../models/RootCauseAnalysis");
 const Problem = require("../models/Problem");
 const Department = require("../models/Department");
 const DepartmentUser = require("../models/DepartmentUser");
-const OnCallSchedule = require("../models/OnCallSchedule");
+const { selectL1Assignee } = require("../services/escalationService");
 const KBArticle = require("../models/KnowledgeBaseArticle");
 const {
     ROLES,
@@ -60,10 +60,10 @@ const isValidId = (value) => mongoose.Types.ObjectId.isValid(value);
  * The caller's visibility rule goes in first and everything is combined with
  * `$and`, so no combination of query parameters can widen what a user sees.
  */
-const buildIncidentFilter = (req) => {
+const buildIncidentFilter = async (req) => {
     const { search, assignedTo, reportedBy, overdue, dateFrom, dateTo } = req.query;
 
-    const conditions = [permissions.visibilityFilter(req.user)];
+    const conditions = [await permissions.departmentVisibilityFilter(req.user)];
 
     const statuses = toArray(req.query.status).filter((s) => STATUS_VALUES.includes(s));
     if (statuses.length) conditions.push({ status: { $in: statuses } });
@@ -156,7 +156,7 @@ const POPULATE = [
  * The main list screen: search, filter, sort and paginate (FR-10).
  */
 const listIncidents = asyncHandler(async (req, res) => {
-    const filter = buildIncidentFilter(req);
+    const filter = await buildIncidentFilter(req);
     const { page, limit, skip } = getPagination(req.query, { defaultLimit: 10 });
 
     const [incidents, total] = await Promise.all([
@@ -272,46 +272,9 @@ const createIncident = async (req, res) => {
             low: PRIORITY?.LOW || "low",
         };
         const targetPriority = validPriorityMap[rawPriority] || validPriorityMap.medium;
-        const departmentObj = await Department.findOne({ categories: selectedCategory });
-        let departmentId = departmentObj ? departmentObj._id : null;
-        let assignedTo = null;
-        if (departmentId && ["critical", "high"].includes(rawPriority)) {
-            const now = new Date();
-
-            let activeShift = await OnCallSchedule.findOne({
-                $or: [{ department: departmentId }, { departmentId: departmentId }],
-                startTime: { $lte: now },
-                endTime: { $gte: now },
-            });
-
-            if (!activeShift) {
-                activeShift = await OnCallSchedule.findOne({
-                    $or: [{ department: departmentId }, { departmentId: departmentId }],
-                }).sort({ createdAt: -1 });
-            }
-
-            console.log("Found Roster Document:", activeShift);
-
-            if (activeShift) {
-                // 1. Check escalationChain array for step 1
-                if (Array.isArray(activeShift.escalationChain) && activeShift.escalationChain.length > 0) {
-                    const step1 = activeShift.escalationChain.find((e) => e.step === 1) || activeShift.escalationChain[0];
-                    assignedTo = step1?.user || step1?.userId || null;
-                }
-
-                // 2. Fallback to root property if escalationChain isn't populated
-                if (!assignedTo) {
-                    assignedTo =
-                        activeShift.level1Responder ||
-                        activeShift.level1 ||
-                        activeShift.user ||
-                        activeShift.assignedUser ||
-                        null;
-                }
-
-                console.log("Assigned Responder User ID:", assignedTo);
-            }
-        }
+        const assignedAgent = await selectL1Assignee({ category: selectedCategory });
+        const departmentId = assignedAgent?.department || null;
+        const assignedTo = assignedAgent?.user?._id || null;
         const incident = await Incident.create({
             title,
             description,
@@ -345,7 +308,7 @@ const createIncident = async (req, res) => {
                 field: "assignedTo",
                 oldValue: "Unassigned",
                 newValue: autoAssignee ? autoAssignee.name : "Unknown",
-                note: "Auto-assigned based on the active on-call schedule",
+                note: "Auto-assigned based on active L1 department members or an on-call schedule",
             });
         }
         
@@ -1240,7 +1203,7 @@ const searchKBForIncident = asyncHandler(async (req, res) => {
  * the user is looking at on screen.
  */
 const exportIncidents = asyncHandler(async (req, res) => {
-    const filter = buildIncidentFilter(req);
+    const filter = await buildIncidentFilter(req);
 
     // Bounded so an export cannot pull an unbounded result set into memory.
     const incidents = await Incident.find(filter)

@@ -44,11 +44,41 @@ const DepartmentsPage = () => {
         setModalOpen(true);
     };
 
+    // const openEdit = async (record) => {
+    //     try {
+    //         const response = await departmentApi.get(record._id);
+    //         const department = response.data.department;
+    //         setEditing(department);
+    //         form.setFieldsValue({
+    //             title: department.title,
+    //             description: department.description,
+    //             isActive: department.isActive,
+    //             headOfDepartment: department.headOfDepartment?._id,
+    //             categories: department.categories.map((category) => category._id),
+    //             members: department.members.map((member) => member.user._id),
+    //         });
+    //         setModalOpen(true);
+    //     } catch (error) { message.error(error.message); }
+    // };
     const openEdit = async (record) => {
         try {
             const response = await departmentApi.get(record._id);
             const department = response.data.department;
             setEditing(department);
+
+            const embeddedUsers = [
+                ...department.members.map((member) => member.user),
+                ...(department.headOfDepartment ? [department.headOfDepartment] : []),
+            ];
+
+            setAgents((previous) => {
+                const byId = new Map(previous.map((agent) => [agent._id, agent]));
+                embeddedUsers.forEach((user) => {
+                    if (user && !byId.has(user._id)) byId.set(user._id, user);
+                });
+                return Array.from(byId.values());
+            });
+
             form.setFieldsValue({
                 title: department.title,
                 description: department.description,
@@ -60,7 +90,6 @@ const DepartmentsPage = () => {
             setModalOpen(true);
         } catch (error) { message.error(error.message); }
     };
-
     const submit = async (values) => {
         setSaving(true);
         try {
@@ -93,8 +122,23 @@ const DepartmentsPage = () => {
                 <Form.Item name="title" label="Title" rules={[{ required: true, message: "A department title is required" }, { min: 5, max: 140, message: "Between 5 and 140 characters" }]}><Input autoFocus placeholder="e.g. Infrastructure Support" /></Form.Item>
                 <Form.Item name="description" label="Description" rules={[{ required: true, message: "A description is required" }, { min: 10, max: 5000, message: "Between 10 and 5,000 characters" }]}><TextArea rows={3} showCount maxLength={5000} /></Form.Item>
                 <Form.Item name="categories" label="Categories" rules={[{ required: true, message: "Select at least one category" }]}><Select mode="multiple" placeholder="Select owned categories" options={categories.map((category) => ({ value: category._id, label: `${category.name}${category.isActive ? "" : " (inactive)"}` }))} /></Form.Item>
-                <Form.Item name="members" label="Members" rules={[{ required: true, message: "Select at least one support agent" }]} extra="An agent may belong to only one department."><Select mode="multiple" placeholder="Select support agents" options={agents.map((agent) => ({ value: agent._id, label: `${agent.name} (${agent.email})` }))} /></Form.Item>
-                <Form.Item noStyle shouldUpdate={(previous, current) => previous.members !== current.members}>{({ getFieldValue }) => <Form.Item name="headOfDepartment" label="Head of department" dependencies={["members"]} rules={[{ required: true, message: "Select a department head" }, { validator: (_, value) => !value || getFieldValue("members")?.includes(value) ? Promise.resolve() : Promise.reject(new Error("The head must be one of the selected members")) }]}><Select placeholder="Choose a selected member" options={agents.filter((agent) => getFieldValue("members")?.includes(agent._id)).map((agent) => ({ value: agent._id, label: `${agent.name} (${agent.email})` }))} /></Form.Item>}</Form.Item>
+                {/* <Form.Item name="members" label="Members" rules={[{ required: true, message: "Select at least one support agent" }]} extra="An agent may belong to only one department."><Select mode="multiple" placeholder="Select support agents" options={agents.map((agent) => ({ value: agent._id, label: `${agent.name} (${agent.email})${agent.isActive === false ? " — inactive" : ""}` }))} /></Form.Item> */}
+                <Form.Item name="members" label="Members" rules={[{ required: true, message: "Select at least one support agent" }]} extra="An agent may belong to only one department.">
+                    <Select
+                        mode="multiple"
+                        placeholder="Select support agents"
+                        options={agents.map((agent) => ({
+                            value: agent._id,
+                            label: (
+                                <Space size={4}>
+                                    {agent.name} ({agent.email})
+                                    {agent.isActive === false && <Tag color="red">Inactive</Tag>}
+                                </Space>
+                            ),
+                        }))}
+                    />
+                </Form.Item>
+                <Form.Item noStyle shouldUpdate={(previous, current) => previous.members !== current.members}>{({ getFieldValue }) => <Form.Item name="headOfDepartment" label="Head of department" dependencies={["members"]} rules={[{ required: true, message: "Select a department head" }, { validator: (_, value) => !value || getFieldValue("members")?.includes(value) ? Promise.resolve() : Promise.reject(new Error("The head must be one of the selected members")) }]}><Select placeholder="Choose a selected member" options={agents.filter((agent) => getFieldValue("members")?.includes(agent._id)).map((agent) => ({ value: agent._id, label: `${agent.name} (${agent.email})${agent.isActive === false ? " — inactive" : ""}` }))} /></Form.Item>}</Form.Item>
                 <Form.Item name="isActive" label="Active" valuePropName="checked" extra="Inactive departments are retained but not available for future use."><Switch checkedChildren="Yes" unCheckedChildren="No" /></Form.Item>
             </Form>
         </Modal>

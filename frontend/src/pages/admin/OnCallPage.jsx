@@ -79,10 +79,16 @@ const OnCallPage = () => {
                 startTime: values.dateRange[0].toISOString(),
                 endTime: values.dateRange[1].toISOString(),
                 ackWindowMinutes: values.ackWindowMinutes,
-                escalationChain: values.escalationChain.map((userId, idx) => ({
-                    step: idx + 1,
-                    user: userId
-                }))
+                escalationChain: [
+                    ...(values.level1Responders || []).map((userId) => ({
+                        step: 1,
+                        user: userId,
+                    })),
+                    ...(values.escalationResponders || []).map((userId, idx) => ({
+                        step: idx + 2,
+                        user: userId,
+                    })),
+                ],
             };
             await createOnCallRoster(payload);
             message.success("On-call roster created successfully");
@@ -280,18 +286,36 @@ const OnCallPage = () => {
                         <InputNumber min={1} max={120} style={{ width: "100%" }} />
                     </Form.Item>
 
-                    <Form.Item 
-                        name="escalationChain" 
-                        label="Escalation Chain (Select Responders in Order)" 
-                        rules={[{ required: true, message: "Please select at least one responder" }]}
+                    <Form.Item
+                        name="level1Responders"
+                        label="Level 1 Responders"
+                        rules={[{ required: true, message: "Please select at least one Level 1 responder" }]}
                     >
-                        <Select 
-                            mode="multiple" 
-                            placeholder="Select users in sequence" 
+                        <Select
+                            mode="multiple"
+                            placeholder="Select all primary responders"
                             style={{ width: "100%" }}
                             options={(Array.isArray(users) ? users : []).map((u) => ({
                                 label: u.name ? `${u.name} (${u.email})` : u.email || u._id,
                                 value: u._id
+                            }))}
+                            filterOption={(input, option) =>
+                                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                            }
+                        />
+                    </Form.Item>
+
+                    <Form.Item
+                        name="escalationResponders"
+                        label="Escalation Responders (Level 2 and above)"
+                    >
+                        <Select
+                            mode="multiple"
+                            placeholder="Select responders for escalation order"
+                            style={{ width: "100%" }}
+                            options={(Array.isArray(users) ? users : []).map((u) => ({
+                                label: u.name ? `${u.name} (${u.email})` : u.email || u._id,
+                                value: u._id,
                             }))}
                             filterOption={(input, option) =>
                                 (option?.label ?? '').toLowerCase().includes(input.toLowerCase())

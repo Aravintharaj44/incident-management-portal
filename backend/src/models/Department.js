@@ -78,7 +78,6 @@ const departmentSchema = new mongoose.Schema(
         // but this ID doesn't.
         zohoDepartmentId: {
             type: String,
-            default: null,
             unique: true,
             sparse: true, // allows many docs with null, but no two equal non-null values
         },

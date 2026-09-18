@@ -52,5 +52,5 @@ const DEMO_OAUTH = {
         scopes: ["tickets.READ", "tickets.WRITE"],
     },
 };
-
+ 
 module.exports = { DEMO_OAUTH };

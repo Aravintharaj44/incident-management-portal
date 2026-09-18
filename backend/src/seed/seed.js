@@ -821,3 +821,4 @@ run()
         await mongoose.connection.close().catch(() => {});
         process.exit(1);
     });
+

@@ -44,7 +44,7 @@ const POPULATE = [
  * `from`/`limit` pagination metadata (Zoho-style, FR5-08).
  */
 const listTickets = asyncHandler(async (req, res) => {
-    const filter = buildIncidentFilter(req);
+    const filter = await buildIncidentFilter(req);
     const { from, limit, skip } = getFromLimit(req.query, { defaultLimit: 10 });
 
     const [incidents, total] = await Promise.all([

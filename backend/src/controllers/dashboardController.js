@@ -35,7 +35,7 @@ const densify = (rows, keys, labels) => {
 
 /** GET /api/v1/dashboard/summary */
 const getSummary = asyncHandler(async (req, res) => {
-    const scope = permissions.visibilityFilter(req.user);
+    const scope = await permissions.departmentVisibilityFilter(req.user);
     const now = new Date();
 
     const [
@@ -132,7 +132,7 @@ const getSummary = asyncHandler(async (req, res) => {
  * Series for the dashboard charts: category split and a created/resolved trend.
  */
 const getCharts = asyncHandler(async (req, res) => {
-    const scope = permissions.visibilityFilter(req.user);
+    const scope = await permissions.departmentVisibilityFilter(req.user);
 
     const days = Math.min(90, Math.max(7, Number.parseInt(req.query.days, 10) || 30));
 
@@ -272,7 +272,7 @@ const getAgentWorkload = asyncHandler(async (_req, res) => {
  * The "needs attention" list under the dashboard tiles.
  */
 const getRecentIncidents = asyncHandler(async (req, res) => {
-    const scope = permissions.visibilityFilter(req.user);
+    const scope = await permissions.departmentVisibilityFilter(req.user);
     const limit = Math.min(20, Math.max(1, Number.parseInt(req.query.limit, 10) || 5));
 
     const populate = [
@@ -307,6 +307,7 @@ const getRecentIncidents = asyncHandler(async (req, res) => {
         req.user.role === ROLES.USER
             ? []
             : await Incident.find({
+                ...scope,
                   assignedTo: req.user._id,
                   status: { $nin: TERMINAL_STATUSES },
               })
@@ -324,8 +325,8 @@ const getRecentIncidents = asyncHandler(async (req, res) => {
 
 
 /** Keeps every advanced widget on exactly the same category, priority and date scope. */
-const advancedIncidentFilter = (req) => {
-    const filter = { ...permissions.visibilityFilter(req.user) };
+const advancedIncidentFilter = async (req) => {
+    const filter = { ...(await permissions.departmentVisibilityFilter(req.user)) };
     const categories = String(req.query.category || "").split(",").filter(mongoose.Types.ObjectId.isValid);
     const priorities = String(req.query.priority || "").split(",").filter((value) => PRIORITY_VALUES.includes(value));
 
@@ -346,7 +347,7 @@ const prefixFilter = (filter, prefix) => Object.fromEntries(
 
 /** GET /api/v1/dashboard/advanced - filter-aware analytics for FR3-14..17. */
 const getAdvancedAnalytics = asyncHandler(async (req, res) => {
-    const filter = advancedIncidentFilter(req);
+    const filter = await advancedIncidentFilter(req);
     const incidentFilter = prefixFilter(filter, "incident");
     const [trend, rootCauses, majorIncidents, performance] = await Promise.all([
         Incident.aggregate([{ $match: filter }, { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } }, { $sort: { _id: 1 } }]),

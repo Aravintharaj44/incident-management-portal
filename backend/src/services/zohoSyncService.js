@@ -163,6 +163,7 @@ const runSync = async ({ dryRun = false } = {}) => {
                     isActive: active,
                     zohoId: sourceId,
                     role: DEFAULT_ZOHO_USER_ROLE,
+                    authProvider: "zoho",
                 });
 
                 const { departmentCreated } = await syncDepartmentMembership(user, department, departmentZohoId);

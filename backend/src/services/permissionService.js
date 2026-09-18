@@ -1,5 +1,6 @@
 const { ROLES, STATUS, STATUS_TRANSITIONS, PROBLEM_STATUS_TRANSITIONS } = require("../constants");
 const ApiError = require("../utils/ApiError");
+const DepartmentUser = require("../models/DepartmentUser");
 
 /**
  * All incident-level authorization rules, in one file.
@@ -29,6 +30,20 @@ const isAssigneeOf = (user, incident) => idOf(incident.assignedTo) === idOf(user
 const visibilityFilter = (user) => {
     if (isAdmin(user) || isAgent(user)) return {};
     return { reportedBy: user._id };
+};
+
+const departmentVisibilityFilter = async (user) => {
+    if (isAdmin(user)) return {};
+    if (!isAgent(user)) return { reportedBy: user._id };
+
+    const departments = await DepartmentUser.distinct("department", {
+        user: user._id,
+        isActive: true,
+    });
+
+    return departments.length
+        ? { department: { $in: departments } }
+        : { _id: { $exists: false } };
 };
 
 const canView = (user, incident) => {
@@ -177,6 +192,7 @@ module.exports = {
     isReporterOf,
     isAssigneeOf,
     visibilityFilter,
+    departmentVisibilityFilter,
     canView,
     canEditDetails,
     canChangeStatus,
