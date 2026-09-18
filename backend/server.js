@@ -32,6 +32,10 @@ const startServer = async () => {
         zohoSyncJob.start(); 
         // startOverdueActionItemJob()
         startOverdueActionItemJob();
+        // startOverdueIncidentJob();
+        // startEmailIntakeJob();
+        // startEscalationJob();
+        // startOverdueActionItemJob();
     } catch (error) {
         logger.error(`Startup failed: ${error.message}`);
         process.exit(1);
