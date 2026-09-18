@@ -28,16 +28,3 @@ jobs:
         run: |
           curl -sf -X GET "${{ secrets.API_BASE_URL }}/api/cron/email-intake" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
-      - name: Run Zoho sync
-        env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          set -eu
-
-          curl --fail-with-body --show-error --silent \
-            --retry 2 \
-            --retry-delay 5 \
-            --request GET \
-            --header "Authorization: Bearer ${CRON_SECRET}" \
-            "${API_BASE_URL}/api/cron/zoho-sync"
