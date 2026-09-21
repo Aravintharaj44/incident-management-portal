@@ -813,12 +813,12 @@ const deleteIncident = asyncHandler(async (req, res) => {
     }
 
     const ActivityLog = require("../models/ActivityLog");
-    const { removeFile } = require("../middleware/upload");
+    const storageService = require("../services/storageService");
 
     // Delete the files from disk before the rows that point at them, otherwise
     // the stored names are lost and the uploads folder leaks.
     const attachments = await Attachment.find({ incident: incident._id }).lean();
-    attachments.forEach((attachment) => removeFile(attachment.storedName));
+    await Promise.allSettled(attachments.map((attachment) => storageService.delete(attachment)));
 
     await Promise.all([
         Comment.deleteMany({ incident: incident._id }),

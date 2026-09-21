@@ -33,6 +33,9 @@ const storage = multer.diskStorage({
     },
 });
 
+// Local uploads retain diskStorage; cloud uploads are stored after validation.
+const activeStorage = env.storage.provider === "wasabi" ? multer.memoryStorage() : storage;
+
 const fileFilter = (_req, file, cb) => {
     if (!env.upload.allowedMimeTypes.includes(file.mimetype)) {
         return cb(
@@ -45,7 +48,7 @@ const fileFilter = (_req, file, cb) => {
 };
 
 const upload = multer({
-    storage,
+    storage: activeStorage,
     fileFilter,
     limits: {
         fileSize: env.upload.maxFileSizeMb * 1024 * 1024,

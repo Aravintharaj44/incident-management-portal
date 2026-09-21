@@ -92,6 +92,16 @@ const env = {
             .map((type) => type.trim())
             .filter(Boolean),
     },
+    storage: {
+        provider: (process.env.STORAGE_PROVIDER || "local").toLowerCase(),
+        wasabi: {
+            accessKey: process.env.WASABI_ACCESS_KEY || "",
+            secretKey: process.env.WASABI_SECRET_KEY || "",
+            bucketName: process.env.WASABI_BUCKET_NAME || "",
+            region: process.env.WASABI_REGION || "s3.wasabisys.com",
+            endpoint: process.env.WASABI_ENDPOINT || "",
+        },
+    },
     mail: {
         enabled: toBool(process.env.MAIL_ENABLED, false),
         host: process.env.SMTP_HOST,
@@ -170,6 +180,21 @@ const validateEnv = () => {
         throw new Error(
             "MAIL_ENABLED requires SMTP_HOST, SMTP_USER and SMTP_PASS."
         );
+    }
+
+    if (!["local", "wasabi"].includes(env.storage.provider)) {
+        throw new Error("STORAGE_PROVIDER must be either 'local' or 'wasabi'.");
+    }
+    if (env.storage.provider === "wasabi") {
+        const wasabi = env.storage.wasabi;
+        const missingWasabi = [
+            !wasabi.accessKey && "WASABI_ACCESS_KEY",
+            !wasabi.secretKey && "WASABI_SECRET_KEY",
+            !wasabi.bucketName && "WASABI_BUCKET_NAME",
+        ].filter(Boolean);
+        if (missingWasabi.length) {
+            throw new Error(`STORAGE_PROVIDER=wasabi requires: ${missingWasabi.join(", ")}`);
+        }
     }
 };
 

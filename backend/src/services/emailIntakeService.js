@@ -1,4 +1,3 @@
-const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { ImapFlow } = require('imapflow');
@@ -12,6 +11,7 @@ const logger = require('../utils/logger');
 const { env } = require('../config/env');
 const { INTAKE_SOURCE, ACTIVITY_ACTIONS } = require('../constants');
 const categoryService = require('./categoryService');
+const storageService = require('./storageService');
 
 /**
  * emailIntakeService
@@ -175,13 +175,19 @@ async function saveEmailAttachments(parsedAttachments, incidentId, uploadedBy) {
       const safeExt = /^\.[a-z0-9]+$/.test(ext) ? ext : '';
       const storedName = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${safeExt}`;
 
-      fs.mkdirSync(env.upload.dir, { recursive: true });
-      await fs.promises.writeFile(path.join(env.upload.dir, storedName), att.content);
+      const storage = await storageService.upload({
+        incidentId,
+        storedName,
+        mimeType,
+        data: att.content,
+      });
 
       const attachment = await Attachment.create({
         incident: incidentId,
         originalName,
         storedName,
+        storageProvider: storage.storageProvider,
+        storageKey: storage.storageKey,
         mimeType,
         size,
         uploadedBy,

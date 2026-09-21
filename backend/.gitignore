@@ -20,6 +20,7 @@ Thumbs.db
 .idea/
 .vscode/
 .env.example
+!.env.example
 
 # Project deck generator
 /scripts/generateProjectDeck.js
