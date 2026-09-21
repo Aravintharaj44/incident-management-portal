@@ -128,7 +128,7 @@ const processOverdueIncidents = async () => {
  * * * * * *
  */
 const startOverdueIncidentJob = () => {
-    cron.schedule("* * * * *", async () => {
+    cron.schedule("*/20 * * * *", async () => {
         await processOverdueIncidents();
     });
 
