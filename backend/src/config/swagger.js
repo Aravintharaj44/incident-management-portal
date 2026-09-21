@@ -2654,11 +2654,24 @@ WebhookDelivery: {
             // ==================================================================
             // Attachments (direct)
             // ==================================================================
-            "/attachments/{id}/download": {
+            "/attachments/{id}/view": {
+                get: {
+                    tags: ["Attachments"],
+                    summary: "View an attachment inline",
+                    description: "Requires authentication and access to the parent incident. Streams browser-previewable files through the backend with Content-Disposition: inline.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Attachment id (Mongo ObjectId)." }],
+                    responses: {
+                        200: { description: "The file streamed inline.", content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } } },
+                        401: { description: "Not authenticated." },
+                        403: { description: "No access to the parent incident." },
+                        404: { description: "Attachment not found." },
+                    },
+                },
+            },            "/attachments/{id}/download": {
                 get: {
                     tags: ["Attachments"],
                     summary: "Download an attachment",
-                    description: "Requires authentication and access to the parent incident. Accepts the token as a query parameter (`?token=`) as well as the Bearer header, so files can open directly in a browser tab.",
+                    description: "Requires authentication and access to the parent incident. Streams the file through the backend with Content-Disposition: attachment. Accepts the token as a query parameter (`?token=`) as well as the Bearer header.",
                     parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Attachment id (Mongo ObjectId)." }],
                     responses: {
                         200: { description: "The file streamed with its original name.", content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } } },

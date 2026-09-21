@@ -23,10 +23,11 @@ export const attachmentApi = {
 
     remove: (attachmentId) => client.delete(`/attachments/${attachmentId}`),
 
-    /**
-     * Downloads are authenticated, so the token travels as a query parameter -
-     * a plain <a href> cannot set an Authorization header.
-     */
-    downloadUrl: (attachmentId) =>
-        `${BASE_URL}/attachments/${attachmentId}/download?token=${getStoredToken()}`,
+    /** Browser tabs cannot attach Authorization headers, so protected file
+     * endpoints use the existing JWT query-token mechanism. */
+    fileUrl: (attachmentId, action) =>
+        `${BASE_URL}/attachments/${attachmentId}/${action}?token=${encodeURIComponent(getStoredToken() || "")}`,
+
+    viewUrl: (attachmentId) => attachmentApi.fileUrl(attachmentId, "view"),
+    downloadUrl: (attachmentId) => attachmentApi.fileUrl(attachmentId, "download"),
 };

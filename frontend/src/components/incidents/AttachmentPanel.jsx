@@ -3,6 +3,7 @@ import { App, Button, Empty, Popconfirm, Space, Typography, Upload } from "antd"
 import {
     DeleteOutlined,
     DownloadOutlined,
+    EyeOutlined,
     FileImageOutlined,
     FileOutlined,
     FilePdfOutlined,
@@ -14,6 +15,12 @@ import { useAuth } from "../../hooks/useAuth";
 import { formatFileSize, fromNow } from "../../utils/format";
 
 const { Text } = Typography;
+
+const previewableMimeTypes = new Set([
+    "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp",
+    "text/plain", "text/csv", "application/json",
+]);
+const canPreview = (mimeType) => previewableMimeTypes.has(mimeType);
 
 /** Icon per file type, so the list is scannable without reading names. */
 const iconFor = (mimeType) => {
@@ -66,6 +73,14 @@ const AttachmentPanel = ({ incidentId, attachments = [], canUpload, onChange }) 
 
     const canDelete = (attachment) =>
         isAdmin || attachment.uploadedBy?._id === user?.id;
+
+    const handleView = (attachment) => {
+        if (!canPreview(attachment.mimeType)) {
+            message.info("Preview is not supported for this file type. Use Download instead.");
+            return;
+        }
+        window.open(attachmentApi.viewUrl(attachment._id), "_blank", "noopener,noreferrer");
+    };
 
     return (
         <Space orientation="vertical" size={16} style={{ width: "100%" }}>
@@ -133,17 +148,28 @@ const AttachmentPanel = ({ incidentId, attachments = [], canUpload, onChange }) 
                                 </Text>
                             </div>
 
-                            <Button
-                                type="text"
-                                size="small"
-                                icon={<DownloadOutlined />}
-                                // Opened in a new tab; the token travels in the
-                                // query string because a plain link cannot
-                                // carry an Authorization header.
-                                href={attachmentApi.downloadUrl(attachment._id)}
-                                target="_blank"
-                                rel="noreferrer"
-                            />
+                            <Space size={0}>
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    title={canPreview(attachment.mimeType) ? "View" : "Preview not supported"}
+                                    icon={<EyeOutlined />}
+                                    onClick={() => handleView(attachment)}
+                                >
+                                    View
+                                </Button>
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    title="Download"
+                                    icon={<DownloadOutlined />}
+                                    href={attachmentApi.downloadUrl(attachment._id)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    Download
+                                </Button>
+                            </Space>
 
                             {canDelete(attachment) && (
                                 <Popconfirm

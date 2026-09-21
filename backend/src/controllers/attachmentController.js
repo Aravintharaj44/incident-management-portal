@@ -1,5 +1,3 @@
-const fs = require("fs");
-const path = require("path");
 const Attachment = require("../models/Attachment");
 const RootCauseAnalysis = require("../models/RootCauseAnalysis");
 const Incident = require("../models/Incident");
@@ -8,9 +6,11 @@ const asyncHandler = require("../utils/asyncHandler");
 const logger = require("../utils/logger");
 const { successResponse } = require("../utils/apiResponse");
 const { removeFile } = require("../middleware/upload");
+const storageService = require("../services/storageService");
+const crypto = require("crypto");
+const path = require("path");
 const activityService = require("../services/activityService");
 const permissions = require("../services/permissionService");
-const { env } = require("../config/env");
 const { ACTIVITY_ACTIONS } = require("../constants");
 
 /**
@@ -58,17 +58,31 @@ const uploadAttachments = asyncHandler(async (req, res) => {
     if (req.params.rcaId && !rca) throw ApiError.notFound("RCA not found for this incident");
 
 
-    const created = await Attachment.insertMany(
-        req.files.map((file) => ({
-            incident: incident._id,
-            rca: rca?._id || null,
-            originalName: file.originalname,
-            storedName: file.filename,
-            mimeType: file.mimetype,
-            size: file.size,
-            uploadedBy: req.user._id,
-        }))
-    );
+    const uploaded = [];
+    try {
+        for (const file of req.files) {
+            const ext = path.extname(file.originalname).toLowerCase().slice(0, 10);
+            const storedName = file.filename || `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${/^\.[a-z0-9]+$/.test(ext) ? ext : ""}`;
+            const storage = await storageService.upload({ incidentId: incident._id, storedName, mimeType: file.mimetype, data: file.buffer, sourcePath: file.path });
+            uploaded.push({ file, storedName, storage });
+        }
+    } catch (error) {
+        await Promise.allSettled(uploaded.map(({ storedName, storage }) => storageService.delete({ storedName, ...storage })));
+        req.files.forEach((file) => removeFile(file.filename));
+        throw error;
+    }
+
+    let created;
+    try {
+        created = await Attachment.insertMany(uploaded.map(({ file, storedName, storage }) => ({
+            incident: incident._id, rca: rca?._id || null, originalName: file.originalname, storedName,
+            storageProvider: storage.storageProvider, storageKey: storage.storageKey,
+            mimeType: file.mimetype, size: file.size, uploadedBy: req.user._id,
+        })));
+    } catch (error) {
+        await Promise.allSettled(uploaded.map(({ storedName, storage }) => storageService.delete({ storedName, ...storage })));
+        throw error;
+    }
 
     await Incident.updateOne(
         { _id: incident._id },
@@ -114,39 +128,34 @@ const listAttachments = asyncHandler(async (req, res) => {
     return successResponse(res, 200, "Attachments retrieved", { attachments });
 });
 
-/**
- * GET /api/v1/attachments/:id/download
- *
- * Accepts the token as a query parameter as well as a header, so the file can
- * be opened straight from a browser tab.
- */
-const downloadAttachment = asyncHandler(async (req, res) => {
+const streamAttachment = async (req, res, disposition) => {
     const attachment = await Attachment.findById(req.params.id);
     if (!attachment) throw ApiError.notFound("Attachment not found");
 
-    // Permission is checked against the parent incident, not the file.
     await loadViewableIncident(attachment.incident, req.user);
 
-    const filePath = path.join(env.upload.dir, attachment.storedName);
-
-    // `storedName` is generated server-side, but resolving and re-checking the
-    // prefix means a tampered database row still cannot escape the folder.
-    if (!path.resolve(filePath).startsWith(path.resolve(env.upload.dir))) {
-        throw ApiError.badRequest("Invalid attachment path");
+    let stream;
+    try {
+        stream = await storageService.download(attachment);
+    } catch (error) {
+        if (error.code === "STORAGE_NOT_FOUND") throw ApiError.notFound("The stored file is missing from storage");
+        if (error.code === "INVALID_STORAGE_KEY") throw ApiError.badRequest("Invalid attachment path");
+        // Keep provider/bucket details out of API responses.
+        throw ApiError.internal("Unable to retrieve the attachment");
     }
 
-    if (!fs.existsSync(filePath)) {
-        throw ApiError.notFound("The stored file is missing from the server");
-    }
+    const originalName = attachment.originalName || "attachment";
+    const safeName = originalName.replace(/["\\\r\n]/g, "_");
+    res.setHeader("Content-Type", attachment.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `${disposition}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(originalName)}`);
+    return stream.pipe(res);
+};
 
-    res.setHeader("Content-Type", attachment.mimeType);
-    res.setHeader(
-        "Content-Disposition",
-        `inline; filename="${encodeURIComponent(attachment.originalName)}"`
-    );
+/** GET /api/v1/attachments/:id/view */
+const viewAttachment = asyncHandler(async (req, res) => streamAttachment(req, res, "inline"));
 
-    return fs.createReadStream(filePath).pipe(res);
-});
+/** GET /api/v1/attachments/:id/download */
+const downloadAttachment = asyncHandler(async (req, res) => streamAttachment(req, res, "attachment"));
 
 /** DELETE /api/v1/attachments/:id */
 const deleteAttachment = asyncHandler(async (req, res) => {
@@ -160,7 +169,7 @@ const deleteAttachment = asyncHandler(async (req, res) => {
         throw ApiError.forbidden("You cannot remove this attachment");
     }
 
-    removeFile(attachment.storedName);
+    await storageService.delete(attachment);
     await attachment.deleteOne();
 
     await Incident.updateOne({ _id: incident._id }, { $inc: { attachmentCount: -1 } });
@@ -180,6 +189,7 @@ const deleteAttachment = asyncHandler(async (req, res) => {
 module.exports = {
     uploadAttachments,
     listAttachments,
+    viewAttachment,
     downloadAttachment,
     deleteAttachment,
 };

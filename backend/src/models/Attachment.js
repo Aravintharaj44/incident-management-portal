@@ -18,6 +18,10 @@ const attachmentSchema = new mongoose.Schema(
         // a crafted upload filename.
         storedName: { type: String, required: true },
 
+        // Existing records default to their current local storedName.
+        storageProvider: { type: String, enum: ["local", "wasabi"], default: "local" },
+        storageKey: { type: String, default: function storageKeyDefault() { return this.storedName; } },
+
         mimeType: { type: String, required: true },
         size: { type: Number, required: true },
 
