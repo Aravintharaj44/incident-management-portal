@@ -22,6 +22,7 @@ const oauthRoutes = require("./oauthRoutes");
 const onCallRoutes = require("./onCallRoutes");
 const teamRoutes = require("./teamRoutes");
 const agentRoutes = require("./agentRoutes");
+const chatbotRoutes = require("./chatbotRoutes");
 
 /**
  * Single mount point for the whole API. app.js only has to mount this one
@@ -53,4 +54,5 @@ router.use("/oauth", oauthRoutes);
 router.use('/on-call', onCallRoutes);
 router.use("/teams", teamRoutes);
 router.use("/agents", agentRoutes);
+router.use("/chatbot", chatbotRoutes);
 module.exports = router;

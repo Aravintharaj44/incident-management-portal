@@ -5,8 +5,6 @@ const multer = require("multer");
 const { env } = require("../config/env");
 const ApiError = require("../utils/ApiError");
 
-// Created at load time so the first upload cannot fail on a missing folder.
-// fs.mkdirSync(env.upload.dir, { recursive: true });
 try {
     fs.mkdirSync(env.upload.dir, { recursive: true });
 } catch (error) {
@@ -24,9 +22,6 @@ const storage = multer.diskStorage({
     },
 
     filename: (_req, file, cb) => {
-        // The client-supplied name is never used on disk: a random name kills
-        // path-traversal ("../../.env") and overwrite attacks in one step.
-        // The original name is preserved in the Attachment document instead.
         const ext = path.extname(file.originalname).toLowerCase().slice(0, 10);
         const safeExt = /^\.[a-z0-9]+$/.test(ext) ? ext : "";
         cb(null, `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${safeExt}`);
@@ -55,8 +50,6 @@ const upload = multer({
         files: 5,
     },
 });
-
-/** Best-effort cleanup of orphaned files when a request fails after upload. */
 const removeFile = (storedName) => {
     if (!storedName) return;
     fs.promises.unlink(path.join(env.upload.dir, storedName)).catch(() => { });

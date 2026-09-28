@@ -8,7 +8,7 @@ const {
     TERMINAL_STATUSES,
     SLA_HOURS,
     PRIORITY_WEIGHT,
-    INTAKE_SOURCE,          // <-- add this
+    INTAKE_SOURCE,
     INTAKE_SOURCE_VALUES
 } = require("../constants");
 
