@@ -29,7 +29,7 @@ const startServer = async () => {
         startOverdueIncidentJob();
         startEmailIntakeJob();
         startEscalationJob();
-        zohoSyncJob.start(); 
+        // zohoSyncJob.start(); 
         startOverdueActionItemJob();
     } catch (error) {
         logger.error(`Startup failed: ${error.message}`);

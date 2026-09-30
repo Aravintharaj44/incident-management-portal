@@ -1,6 +1,6 @@
 ﻿import { useState } from "react";
-import { Avatar, Button, Drawer, Flex, Input, Spin, Typography } from "antd";
-import { SendOutlined, RobotOutlined, UserOutlined, WarningOutlined } from "@ant-design/icons";
+import { Avatar, Button, Drawer, Flex, Input, Spin, Typography, Upload } from "antd";
+import { SendOutlined, RobotOutlined, UserOutlined, WarningOutlined, PaperClipOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { chatbotApi } from "../../api/chatbot";
 
@@ -49,6 +49,8 @@ const ChatbotAssistant = () => {
     const [conversationId, setConversationId] = useState();
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [image, setImage] = useState(null);
+    const [descriptionDraft, setDescriptionDraft] = useState("");
     const navigate = useNavigate();
 
     const send = async (payload) => {
@@ -59,6 +61,7 @@ const ChatbotAssistant = () => {
             const data = response?.data;
             if (!data || typeof data !== "object") throw new Error("The assistant returned an invalid response.");
             if (data.conversationId) setConversationId(data.conversationId);
+            if (data.type === "image_analysis") setDescriptionDraft(data.description || "");
             setMessages((current) => [...current, { bot: true, ...data }]);
         } catch (error) {
             setMessages((current) => [...current, { bot: true, type: "error", message: error.message || "Something went wrong. Please try again." }]);
@@ -74,11 +77,14 @@ const ChatbotAssistant = () => {
 
     const submit = () => {
         const message = input.trim();
-        if (!message || loading) return;
-        setMessages((current) => [...current, { bot: false, message }]);
+        if (loading || (!message && !image)) return;
+        setMessages((current) => [...current, { bot: false, message: message || image.name, imagePreview: image?.preview }]);
         setInput("");
-        send({ message });
+        if (image) { const form = new FormData(); if (message) form.append("message", message); form.append("image", image.file); if (conversationId) form.append("conversationId", conversationId); setImage(null); send({ form }); }
+        else send({ message });
     };
+    const useEditedDescription = () => { if (!descriptionDraft.trim() || loading) return; setMessages((current) => [...current, { bot: false, message: descriptionDraft.trim() }]); send({ message: descriptionDraft.trim() }); };
+    const chooseImage = (file) => { if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return Upload.LIST_IGNORE; const reader = new FileReader(); reader.onload = () => setImage({ file, name: file.name, preview: reader.result }); reader.readAsDataURL(file); return false; };
 
     const selectOption = (option) => {
         if (option.id.startsWith("VIEW_INCIDENT:")) {
@@ -99,7 +105,7 @@ const ChatbotAssistant = () => {
             return (
                 <div key={index} style={{ display: "flex", alignItems: "flex-end", gap: 8, alignSelf: "flex-end", maxWidth: "92%" }}>
                     <div style={{ ...USER_GRADIENT, borderRadius: "14px 14px 4px 14px", padding: "10px 14px", boxShadow: "0 4px 14px rgba(22,119,255,0.25)" }}>
-                        <Paragraph style={{ whiteSpace: "pre-line", marginBottom: 0, color: "#fff" }}>{item.message}</Paragraph>
+                        <Paragraph style={{ whiteSpace: "pre-line", marginBottom: 0, color: "#fff" }}>{item.message}</Paragraph>{item.imagePreview && <img src={item.imagePreview} alt="Selected upload" style={{ maxWidth: 180, maxHeight: 120, display: "block", marginTop: 8, borderRadius: 8 }} />}
                     </div>
                     <Avatar size={28} style={{ background: USER_GRADIENT.background, flexShrink: 0 }} icon={<UserOutlined />} />
                 </div>
@@ -112,6 +118,8 @@ const ChatbotAssistant = () => {
                 <Avatar size={28} style={{ background: accent.border, flexShrink: 0 }} icon={item.type === "error" ? <WarningOutlined /> : <RobotOutlined />} />
                 <div style={{ background: accent.bg, border: `1px solid ${accent.border}33`, borderLeft: `3px solid ${accent.border}`, borderRadius: "4px 14px 14px 14px", padding: "10px 14px", boxShadow: "0 2px 10px rgba(0,0,0,0.06)" }}>
                     <Paragraph style={{ whiteSpace: "pre-line", marginBottom: item.options?.length ? 10 : 0 }}>{item.message}</Paragraph>
+                    {item.image && <Text type="secondary">Attachment: {item.image.filename}</Text>}
+                    {item.type === "image_analysis" && <div style={{ marginTop: 10 }}><Text strong>AI-generated description</Text><Input.TextArea aria-label="AI-generated description" value={descriptionDraft} onChange={(event) => setDescriptionDraft(event.target.value)} rows={4} disabled={loading} style={{ marginTop: 6 }} /><Flex gap={6} style={{ marginTop: 6 }}><Button size="small" type="primary" onClick={useEditedDescription} disabled={loading}>Use Description</Button><Button size="small" onClick={() => setDescriptionDraft(item.description || "")} disabled={loading}>Reset</Button></Flex></div>}
                     {item.profile && <Text>{item.profile.name}<br />{item.profile.email}<br />{item.profile.role}</Text>}
                     {item.incident && <Text>{item.incident.incidentNumber}<br />{item.incident.title}<br />Status: {item.incident.status}</Text>}
                     {item.items?.map((row) => (
@@ -202,7 +210,9 @@ const ChatbotAssistant = () => {
                         </Flex>
                     )}
                 </Flex>
+                {image && <Flex align="center" gap={8} style={{ marginTop: 10 }}><img src={image.preview} alt="Selected image preview" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 6 }} /><Text ellipsis style={{ maxWidth: 230 }}>{image.name}</Text><Button aria-label="Remove image" size="small" icon={<DeleteOutlined />} onClick={() => setImage(null)} disabled={loading} /></Flex>}
                 <Flex gap={8} style={{ marginTop: 12 }}>
+                    <Upload accept="image/jpeg,image/png,image/webp" showUploadList={false} beforeUpload={chooseImage} disabled={loading}><Button aria-label="Attach image" shape="circle" icon={<PaperClipOutlined />} disabled={loading} /></Upload>
                     <Input aria-label="Type your message" value={input} onChange={(event) => setInput(event.target.value)} onPressEnter={submit} placeholder="Type your message..." disabled={loading} style={{ borderRadius: 20 }} />
                     <Button type="primary" shape="circle" icon={<SendOutlined />} onClick={submit} loading={loading} aria-label="Send message" style={{ background: "linear-gradient(135deg,#1677ff,#722ed1)", border: "none" }} />
                 </Flex>

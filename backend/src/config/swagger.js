@@ -1433,8 +1433,115 @@ WebhookDelivery: {
             { name: "Intake", description: "Manual review queue for email/webhook payloads that failed automatic ingestion (FR4-20)." },
             { name: "Teams", description: "Read-only Teams/Departments API (FR5-06) for external clients to resolve team and category structure." },
             { name: "Agents", description: "Agents API (FR5-05) for external clients to list and inspect support agents." },
+            { name: "Vulnerabilities", description: "AI-assisted vulnerability alert classification." },
         ],
         paths: {
+            // ==================================================================
+            // Vulnerabilities
+            // ==================================================================
+            "/vulnerabilities/analyze": {
+                post: {
+                    tags: ["Vulnerabilities"],
+                    summary: "Analyze a vulnerability alert",
+                    description: "Classifies a vulnerability alert with the backend AI service. This route currently has no route-level authentication middleware; it is still subject to the API-wide rate limiter.",
+                    security: [],
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    required: ["vulnerability"],
+                                    properties: {
+                                        vulnerability: {
+                                            type: "string",
+                                            minLength: 1,
+                                            description: "Non-empty vulnerability alert or description.",
+                                            example: "A vulnerability alert describing the affected application or system...",
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    responses: {
+                        200: {
+                            description: "Vulnerability analysis completed.",
+                            content: {
+                                "application/json": {
+                                    schema: {
+                                        type: "object",
+                                        required: ["success", "message", "data"],
+                                        properties: {
+                                            success: { type: "boolean", example: true },
+                                            message: { type: "string", example: "Successfully retrived" },
+                                            data: {
+                                                type: "object",
+                                                required: ["result"],
+                                                properties: {
+                                                    result: {
+                                                        type: "object",
+                                                        required: ["success", "data", "validation_warnings", "model", "usage"],
+                                                        properties: {
+                                                            success: { type: "boolean", description: "Whether the AI classification passed backend validation." },
+                                                            data: {
+                                                                type: "object",
+                                                                required: ["os_or_application", "vulnerability_type", "vulnerability_category", "summary", "affected_component", "attack_vector", "severity", "confidence", "remediation", "reasoning"],
+                                                                properties: {
+                                                                    os_or_application: { type: "string", enum: ["Operating System", "Application", "Both", "Unknown"] },
+                                                                    vulnerability_type: { type: "string", enum: ["Application", "Network", "Operating System", "Database", "Web", "Authentication", "Configuration", "Cryptographic", "Hardware", "Other"] },
+                                                                    vulnerability_category: { type: "string", enum: ["Information Disclosure", "Authentication Bypass", "Privilege Escalation", "Remote Code Execution", "Denial of Service", "Misconfiguration", "Unsupported Software", "Security Control Failure", "Other"] },
+                                                                    summary: { type: "string" },
+                                                                    affected_component: { type: "string" },
+                                                                    attack_vector: { type: "string", enum: ["Local", "Network", "Physical", "Adjacent Network", "Unknown"] },
+                                                                    severity: { type: "string", enum: ["Critical", "High", "Medium", "Low", "Informational", "Unknown"] },
+                                                                    confidence: { type: "integer", minimum: 0, maximum: 100 },
+                                                                    remediation: { type: "string" },
+                                                                    reasoning: { type: "string" },
+                                                                },
+                                                            },
+                                                            validation_warnings: { type: "array", items: { type: "string" }, description: "Backend validation findings for the AI classification." },
+                                                            model: { type: "string", nullable: true },
+                                                            usage: { type: "object", nullable: true, additionalProperties: true },
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                    example: {
+                                        success: true,
+                                        message: "Successfully retrived",
+                                        data: {
+                                            result: {
+                                                success: true,
+                                                data: {
+                                                    os_or_application: "Application",
+                                                    vulnerability_type: "Web",
+                                                    vulnerability_category: "Information Disclosure",
+                                                    summary: "The alert indicates that sensitive information may be exposed by the affected application.",
+                                                    affected_component: "Affected web application",
+                                                    attack_vector: "Network",
+                                                    severity: "Medium",
+                                                    confidence: 82,
+                                                    remediation: "Review the affected application's configuration and apply the appropriate security remediation based on the available alert information.",
+                                                    reasoning: "The classification is based on the information disclosure behavior described in the alert.",
+                                                },
+                                                validation_warnings: [],
+                                                model: "configured-model",
+                                                usage: null,
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        409: { description: "Analysis failed. The controller maps validation and AI-service failures to HTTP 409.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "API-wide rate limit exceeded.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        500: { description: "Unexpected server error.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
             // ==================================================================
             // Auth
             // ==================================================================

@@ -23,11 +23,8 @@ const onCallRoutes = require("./onCallRoutes");
 const teamRoutes = require("./teamRoutes");
 const agentRoutes = require("./agentRoutes");
 const chatbotRoutes = require("./chatbotRoutes");
+const vulnerabilityRoutes = require("./vulnerabilityRoutes");
 
-/**
- * Single mount point for the whole API. app.js only has to mount this one
- * router, so adding a resource never means touching the app bootstrap.
- */
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -55,4 +52,5 @@ router.use('/on-call', onCallRoutes);
 router.use("/teams", teamRoutes);
 router.use("/agents", agentRoutes);
 router.use("/chatbot", chatbotRoutes);
+router.use("/vulnerabilities",vulnerabilityRoutes);
 module.exports = router;

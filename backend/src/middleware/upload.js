@@ -50,6 +50,12 @@ const upload = multer({
         files: 5,
     },
 });
+const chatImageUpload = multer({
+    storage: multer.memoryStorage(),
+    fileFilter: (_req, file, cb) => ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)
+        ? cb(null, true) : cb(ApiError.badRequest("Only JPEG, PNG, and WebP images can be analyzed.")),
+    limits: { fileSize: env.upload.maxFileSizeMb * 1024 * 1024, files: 1 },
+});
 const removeFile = (storedName) => {
     if (!storedName) return;
     fs.promises.unlink(path.join(env.upload.dir, storedName)).catch(() => { });
@@ -58,3 +64,4 @@ const removeFile = (storedName) => {
 module.exports = upload;
 module.exports.upload = upload;
 module.exports.removeFile = removeFile;
+module.exports.chatImageUpload = chatImageUpload;

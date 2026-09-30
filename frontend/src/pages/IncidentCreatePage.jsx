@@ -66,7 +66,9 @@ const IncidentCreatePage = () => {
 
             if (files.length) {
                 try {
-                    await attachmentApi.upload(created._id, files);
+                    const attachmentForm = new FormData();
+                    files.forEach((file) => attachmentForm.append("files", file));
+                    await attachmentApi.upload(created._id, attachmentForm);
                 } catch (uploadError) {
                     message.warning(
                         `${created.incidentNumber} was created, but the attachments failed: ${uploadError.message}`

@@ -11,6 +11,7 @@ const menu = (message, options, conversationId = "conversation-1") => ({
     success: true,
     message: "Chatbot response",
     data: { conversationId, type: "menu", message, options },
+
 });
 
 describe("ChatbotAssistant", () => {
@@ -38,5 +39,17 @@ describe("ChatbotAssistant", () => {
         expect(screen.getAllByText("Access")).toHaveLength(2);
         expect(chatbotApi.sendMessage).toHaveBeenLastCalledWith({ action: "CATEGORY:access", conversationId: "conversation-1" });
         expect(await screen.findByText("Please describe the issue.")).toBeInTheDocument();
+    });
+    it("selects, previews, and removes an image before sending", async () => {
+        chatbotApi.sendMessage.mockResolvedValueOnce(menu("How can I help you?", []));
+        const user = userEvent.setup();
+        renderWithProviders(<ChatbotAssistant />);
+        await user.click(screen.getByRole("button", { name: "Open Incident Assistant" }));
+        const picker = document.querySelector('input[type="file"]');
+        const image = new File([new Uint8Array([137, 80, 78, 71])], "error.png", { type: "image/png" });
+        await user.upload(picker, image);
+        expect(await screen.findByAltText("Selected image preview")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", { name: "Remove image" }));
+        expect(screen.queryByAltText("Selected image preview")).not.toBeInTheDocument();
     });
 });

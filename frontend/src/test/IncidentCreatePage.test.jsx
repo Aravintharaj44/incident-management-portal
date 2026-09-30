@@ -43,6 +43,26 @@ describe("IncidentCreatePage", () => {
         expect(await screen.findByText("Incident detail destination")).toBeInTheDocument();
     });
 
+    it("uploads selected files as multipart FormData after incident creation", async () => {
+        const user = userEvent.setup();
+        mocks.create.mockResolvedValueOnce({ data: { incident: { _id: "incident-attachment", incidentNumber: "INC-1002" } } });
+        mocks.upload.mockResolvedValueOnce({ data: { attachments: [{ _id: "attachment-1" }] } });
+        renderCreate();
+        await user.type(screen.getByPlaceholderText(/VPN disconnects every few minutes/), "VPN screenshot failure");
+        await user.type(screen.getByPlaceholderText(/Steps to reproduce/), "VPN disconnects while finance users submit reports.");
+        await user.click(await screen.getAllByRole("combobox")[0]);
+        await user.click(await screen.findByText("Network", { selector: ".ant-select-item-option-content" }));
+        const picker = document.querySelector('input[type="file"]');
+        await user.upload(picker, new File(["image"], "vpn.png", { type: "image/png" }));
+        await user.click(screen.getByRole("button", { name: /Submit incident/ }));
+        await screen.findByText("Incident detail destination");
+        expect(mocks.upload).toHaveBeenCalledTimes(1);
+        expect(mocks.upload.mock.calls[0][0]).toBe("incident-attachment");
+        const form = mocks.upload.mock.calls[0][1];
+        expect(form).toBeInstanceOf(FormData);
+        expect(form.getAll("files")[0].name).toBe("vpn.png");
+    });
+
     it("shows an API error and restores the submit control", async () => {
         const user = userEvent.setup();
         mocks.create.mockRejectedValueOnce(new Error("Could not create incident"));

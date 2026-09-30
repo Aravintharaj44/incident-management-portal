@@ -26,6 +26,7 @@
     "express-rate-limit": "^8.6.2",
     "express-validator": "^7.3.2",
     "google-auth-library": "^11.0.2",
+    "groq-sdk": "^1.6.0",
     "helmet": "^8.3.0",
     "imapflow": "^1.7.7",
     "json2csv": "^6.0.0-alpha.2",
@@ -36,6 +37,7 @@
     "multer": "^2.2.0",
     "node-cron": "^4.6.0",
     "nodemailer": "^9.0.5",
+    "openai": "^7.23.0",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1"
   },

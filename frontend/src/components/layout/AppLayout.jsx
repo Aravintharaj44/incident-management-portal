@@ -80,6 +80,11 @@ const AppLayout = () => {
                 icon: <PlusOutlined />,
                 label: <Link to="/incidents/new">Raise Incident</Link>,
             },
+            // {
+            //     key: "/vulnerability-check",
+            //     icon: <SafetyCertificateOutlined />,
+            //     label: <Link to="/vulnerability-check">Vulnerability Check</Link>,
+            // },
         ];
 
         if (isStaff) {
@@ -102,6 +107,11 @@ const AppLayout = () => {
                 key: "/kb",
                 icon: <BookOutlined />,
                 label: <Link to="/kb">Knowledge Base</Link>,
+            });
+            items.push({
+                key: "/vulnerability-check",
+                icon: <SafetyCertificateOutlined />,
+                label: <Link to="/vulnerability-check">Vulnerability Check</Link>,
             });
         }
 
@@ -167,6 +177,7 @@ const AppLayout = () => {
 
         if (pathname.startsWith("/incidents/new")) return ["/incidents/new"];
         if (pathname.startsWith("/incidents")) return ["/incidents"];
+        if (pathname.startsWith("/vulnerability-check")) return ["/vulnerability-check"];
         if (pathname.startsWith("/problems")) return ["/problems"];
         if (pathname.startsWith("/known-errors")) return ["/known-errors"];
         if (pathname.startsWith("/kb")) return ["/kb"];

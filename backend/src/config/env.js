@@ -102,6 +102,12 @@ const env = {
             endpoint: process.env.WASABI_ENDPOINT || "",
         },
     },
+    ai: {
+        gemini: { apiKey: process.env.GEMINI_API_KEY || "", model: process.env.GEMINI_MODEL || "gemini-flash-latest" },
+        codecraft: { apiKey: process.env.CODECRAFT_API_KEY || "", model: process.env.CODECRAFT_MODEL || "claude-sonnet-5", baseURL: process.env.CODECRAFT_BASE_URL || "", supportsImages: toBool(process.env.CODECRAFT_SUPPORTS_IMAGES, false) },
+        geminiCooldownSeconds: toInt(process.env.AI_GEMINI_COOLDOWN_SECONDS, 300),
+        geminiFailureThreshold: toInt(process.env.AI_GEMINI_FAILURE_THRESHOLD, 2),
+    },
     mail: {
         enabled: toBool(process.env.MAIL_ENABLED, false),
         host: process.env.SMTP_HOST,
@@ -174,6 +180,10 @@ const validateEnv = () => {
         throw new Error(
             "OAUTH_ACCESS_TOKEN_EXPIRES_IN must be at least 60 seconds."
         );
+    }
+
+    if (env.ai.codecraft.apiKey && (!env.ai.codecraft.baseURL || !env.ai.codecraft.model)) {
+        throw new Error("CODECRAFT_API_KEY requires CODECRAFT_BASE_URL and CODECRAFT_MODEL.");
     }
 
     if (env.mail.enabled && (!env.mail.host || !env.mail.user || !env.mail.pass)) {
