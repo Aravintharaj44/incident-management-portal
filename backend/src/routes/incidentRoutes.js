@@ -18,6 +18,7 @@ const {
     createIncident,
     updateIncident,
     updateStatus,
+    declareMajorIncident,
     getAssignmentOptions,
     assignIncident,
     deleteIncident,
@@ -115,6 +116,7 @@ router.patch(
     validate,
     updateStatus
 );
+router.post("/:id/major-incident", incidentValidators.byId, validate, declareMajorIncident);
 
 router.get(
     "/:id/assignment-options",

@@ -18,7 +18,7 @@ import { InboxOutlined, SendOutlined } from "@ant-design/icons";
 import { attachmentApi, categoryApi, incidentApi } from "../api";
 import PageHeader from "../components/common/PageHeader";
 import { PriorityTag } from "../components/common/Tags";
-import { PRIORITY, PRIORITY_LABELS, PRIORITY_ORDER } from "../utils/constants";
+import { PRIORITY, PRIORITY_LABELS } from "../utils/constants";
 
 const { TextArea } = Input;
 const { Text, Paragraph } = Typography;
@@ -46,7 +46,9 @@ const IncidentCreatePage = () => {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
 
-    const priority = Form.useWatch("priority", form);
+    const impact = Form.useWatch("impact", form);
+    const urgency = Form.useWatch("urgency", form);
+    const calculatedPriority = ({ high: { high: PRIORITY.CRITICAL, medium: PRIORITY.HIGH, low: PRIORITY.HIGH }, medium: { high: PRIORITY.HIGH, medium: PRIORITY.MEDIUM, low: PRIORITY.MEDIUM }, low: { high: PRIORITY.MEDIUM, medium: PRIORITY.LOW, low: PRIORITY.LOW } })[impact]?.[urgency];
 
     useEffect(() => {
         categoryApi
@@ -119,7 +121,7 @@ const IncidentCreatePage = () => {
                             layout="vertical"
                             onFinish={handleSubmit}
                             requiredMark
-                            initialValues={{ priority: PRIORITY.MEDIUM }}
+                            initialValues={{ impact: "medium", urgency: "medium" }}
                             size="large"
                         >
                             <Form.Item
@@ -189,21 +191,8 @@ const IncidentCreatePage = () => {
                                     </Form.Item>
                                 </Col>
 
-                                <Col xs={24} sm={12}>
-                                    <Form.Item
-                                        name="priority"
-                                        label="Priority"
-                                        rules={[{ required: true }]}
-                                        extra={SLA_HINTS[priority]}
-                                    >
-                                        <Select
-                                            options={PRIORITY_ORDER.map((value) => ({
-                                                value,
-                                                label: PRIORITY_LABELS[value],
-                                            }))}
-                                        />
-                                    </Form.Item>
-                                </Col>
+                                <Col xs={24} sm={12}><Form.Item name="impact" label="Impact" rules={[{ required: true }]}><Select options={["low", "medium", "high"].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} /></Form.Item></Col>
+                                <Col xs={24} sm={12}><Form.Item name="urgency" label="Urgency" rules={[{ required: true }]} extra={calculatedPriority ? `${PRIORITY_LABELS[calculatedPriority]} is calculated automatically. ${SLA_HINTS[calculatedPriority]}` : null}><Select options={["low", "medium", "high"].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} /></Form.Item></Col>
                             </Row>
 
                             <Form.Item label="Attachments (optional)">

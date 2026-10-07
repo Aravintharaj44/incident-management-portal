@@ -14,10 +14,14 @@ const ROLE_VALUES = Object.values(ROLES);
 
 const STATUS = {
     NEW: "new",
+    ASSIGNED: "assigned",
+    ACKNOWLEDGED: "acknowledged",
     IN_PROGRESS: "in_progress",
     ON_HOLD: "on_hold",
     RESOLVED: "resolved",
     CLOSED: "closed",
+    CANCELLED: "cancelled",
+    DUPLICATE: "duplicate",
 };
 
 const STATUS_VALUES = Object.values(STATUS);
@@ -28,15 +32,19 @@ const STATUS_VALUES = Object.values(STATUS);
  * workflow cannot be bypassed by crafting a request by hand.
  */
 const STATUS_TRANSITIONS = {
-    [STATUS.NEW]: [STATUS.IN_PROGRESS, STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CLOSED],
-    [STATUS.IN_PROGRESS]: [STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CLOSED],
-    [STATUS.ON_HOLD]: [STATUS.IN_PROGRESS, STATUS.RESOLVED, STATUS.CLOSED],
+    [STATUS.NEW]: [STATUS.ASSIGNED, STATUS.IN_PROGRESS, STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CLOSED, STATUS.CANCELLED, STATUS.DUPLICATE],
+    [STATUS.ASSIGNED]: [STATUS.ACKNOWLEDGED, STATUS.IN_PROGRESS, STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CANCELLED, STATUS.DUPLICATE],
+    [STATUS.ACKNOWLEDGED]: [STATUS.IN_PROGRESS, STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CANCELLED, STATUS.DUPLICATE],
+    [STATUS.IN_PROGRESS]: [STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CANCELLED, STATUS.DUPLICATE],
+    [STATUS.ON_HOLD]: [STATUS.ASSIGNED, STATUS.ACKNOWLEDGED, STATUS.IN_PROGRESS, STATUS.RESOLVED, STATUS.CANCELLED, STATUS.DUPLICATE],
     [STATUS.RESOLVED]: [STATUS.CLOSED, STATUS.IN_PROGRESS],
-    [STATUS.CLOSED]: [STATUS.IN_PROGRESS],
+    [STATUS.CLOSED]: [],
+    [STATUS.CANCELLED]: [],
+    [STATUS.DUPLICATE]: [],
 };
 
 /** Statuses that count as "the work is finished". */
-const TERMINAL_STATUSES = [STATUS.RESOLVED, STATUS.CLOSED];
+const TERMINAL_STATUSES = [STATUS.RESOLVED, STATUS.CLOSED, STATUS.CANCELLED, STATUS.DUPLICATE];
 
 const PRIORITY = {
     LOW: "low",
@@ -87,7 +95,11 @@ const ACTIVITY_ACTIONS = {
     REOPENED: "reopened",
     LINKED: "linked",
     UNLINKED: "unlinked",
-     ACKNOWLEDGED: "acknowledged",
+    ACKNOWLEDGED: "acknowledged",
+    SLA_PAUSED: "sla_paused",
+    SLA_RESUMED: "sla_resumed",
+    MAJOR_INCIDENT_DECLARED: "major_incident_declared",
+    MAJOR_INCIDENT_UPDATED: "major_incident_updated",
     // V4 - Problem Management (FR4)
     PROBLEM_CREATED: "problem_created",
     PROBLEM_UPDATED: "problem_updated",
@@ -159,10 +171,14 @@ const NOTIFICATION_TYPES = {
 /** Human-readable labels, reused by the email templates and the CSV export. */
 const STATUS_LABELS = {
     [STATUS.NEW]: "New",
+    [STATUS.ASSIGNED]: "Assigned",
+    [STATUS.ACKNOWLEDGED]: "Acknowledged",
     [STATUS.IN_PROGRESS]: "In Progress",
     [STATUS.ON_HOLD]: "On Hold",
     [STATUS.RESOLVED]: "Resolved",
     [STATUS.CLOSED]: "Closed",
+    [STATUS.CANCELLED]: "Cancelled",
+    [STATUS.DUPLICATE]: "Duplicate",
 };
 
 const PRIORITY_LABELS = {
@@ -267,6 +283,13 @@ const WEBHOOK_EVENTS = {
  
 const WEBHOOK_EVENT_VALUES = Object.values(WEBHOOK_EVENTS);
 
+const SUPPORT_AGENT_DESIGNATION  = {
+    L1: "L1",
+    L2: "L2",
+    L3: "L3" 
+};
+const SUPPORT_AGENT_DESIGNATION_VALUES = Object.values(SUPPORT_AGENT_DESIGNATION );
+
 module.exports = {
     ROLES,
     ROLE_VALUES,
@@ -302,4 +325,6 @@ module.exports = {
     OAUTH_SCOPE_VALUES,
     WEBHOOK_EVENTS,
     WEBHOOK_EVENT_VALUES,
+    SUPPORT_AGENT_DESIGNATION,
+    SUPPORT_AGENT_DESIGNATION_VALUES
 };

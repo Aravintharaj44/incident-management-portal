@@ -22,6 +22,7 @@ const Department = require("../models/Department");
 const DepartmentUser = require("../models/DepartmentUser");
 const { selectL1Assignee } = require("../services/escalationService");
 const KBArticle = require("../models/KnowledgeBaseArticle");
+const { calculatePriority } = require("../services/priorityService");
 const {
     ROLES,
     STATUS,
@@ -140,6 +141,7 @@ const decorate = (incident) => ({
     ...incident,
     isOverdue: slaService.isOverdue(incident),
     slaState: slaService.slaState(incident),
+    acknowledgementSlaState: slaService.acknowledgementState(incident),
 });
 
 const POPULATE = [
@@ -256,7 +258,7 @@ const getIncident = asyncHandler(async (req, res) => {
 const createIncident = async (req, res) => {
     try {
         const payload = req.body.incident || req.body;
-        let { title, description, category, categoryId, priority } = payload;
+        let { title, description, category, categoryId, impact, urgency, priority } = payload;
 
         const selectedCategory = category || categoryId;
         const categoryDoc = await Category.findById(selectedCategory);
@@ -264,14 +266,10 @@ const createIncident = async (req, res) => {
         if (!categoryDoc) {
             throw ApiError.badRequest("Please choose an active category");
         }
-        const rawPriority = (priority || "medium").toLowerCase();
-        const validPriorityMap = {
-            critical: PRIORITY?.CRITICAL || "critical",
-            high: PRIORITY?.HIGH || "high",
-            medium: PRIORITY?.MEDIUM || "medium",
-            low: PRIORITY?.LOW || "low",
-        };
-        const targetPriority = validPriorityMap[rawPriority] || validPriorityMap.medium;
+        const targetPriority = calculatePriority(impact, urgency) || priority;
+        if (!targetPriority || (impact && !urgency) || (!impact && urgency)) {
+            throw ApiError.badRequest("Provide both impact and urgency (low, medium, or high); legacy clients may send a valid priority");
+        }
         const assignedAgent = await selectL1Assignee({ category: selectedCategory });
         const departmentId = assignedAgent?.department || null;
         const assignedTo = assignedAgent?.user?._id || null;
@@ -283,6 +281,8 @@ const createIncident = async (req, res) => {
             assignedDepartment: departmentId,
             assignedTo: assignedTo,
             priority: targetPriority, 
+            impact,
+            urgency,
             reportedBy: req.user._id,
             intakeSource: "Manual",
         });
@@ -296,7 +296,7 @@ const createIncident = async (req, res) => {
             incident: incident._id,
             action: ACTIVITY_ACTIONS.CREATED,
             performedBy: req.user._id,
-            note: `Incident raised with ${PRIORITY_LABELS[incident.priority]} priority`,
+            note: impact ? `Incident raised with ${PRIORITY_LABELS[incident.priority]} priority calculated from ${impact} impact and ${urgency} urgency` : `Incident raised with legacy ${PRIORITY_LABELS[incident.priority]} priority`,
         });
 
         if (assignedTo) {
@@ -339,7 +339,7 @@ const createIncident = async (req, res) => {
  * because they carry workflow rules and notifications of their own.
  */
 const updateIncident = asyncHandler(async (req, res) => {
-    const { title, description, category, priority } = req.body;
+    const { title, description, category, impact, urgency } = req.body;
 
     const incident = await Incident.findById(req.params.id).populate(POPULATE);
     if (!incident) throw ApiError.notFound("Incident not found");
@@ -393,10 +393,6 @@ const updateIncident = asyncHandler(async (req, res) => {
             newValue: categoryDoc.name,
         });
         incident.category = categoryDoc._id;
-
-        // The department must stay valid for the new category. If it no longer
-        // applies, return the incident to the unassigned queue so an invalid
-        // department/member combination cannot persist.
         const currentDepartment = incident.department;
         // if (currentDepartment && currentDepartment.categories) {
         if (currentDepartment && Array.isArray(currentDepartment.categories)) {
@@ -433,10 +429,6 @@ const updateIncident = asyncHandler(async (req, res) => {
             }
         }
 
-        // When the category changes, previously linked KB articles may no
-        // longer belong to the new category. Drop the now-invalid links so a
-        // cross-category relationship cannot silently persist. KB articles
-        // themselves are never modified or deleted.
         if (incident.kbArticleIds && incident.kbArticleIds.length) {
             const invalidLinks = await KBArticle.find({
                 _id: { $in: incident.kbArticleIds },
@@ -465,11 +457,14 @@ const updateIncident = asyncHandler(async (req, res) => {
         }
     }
 
-    if (priority !== undefined && priority !== incident.priority) {
-        // Only staff may re-prioritise: it moves the SLA deadline.
-        if (req.user.role === ROLES.USER) {
-            throw ApiError.forbidden("Only support staff can change the priority");
-        }
+    if (impact !== undefined || urgency !== undefined) {
+        const nextImpact = impact ?? incident.impact;
+        const nextUrgency = urgency ?? incident.urgency;
+        const priority = calculatePriority(nextImpact, nextUrgency);
+        if (!priority) throw ApiError.badRequest("Impact and urgency must each be low, medium, or high");
+        incident.impact = nextImpact;
+        incident.urgency = nextUrgency;
+        if (priority !== incident.priority) {
 
         auditEntries.push({
             incident: incident._id,
@@ -481,6 +476,7 @@ const updateIncident = asyncHandler(async (req, res) => {
         });
         // The model's pre-save hook recomputes dueBy and priorityWeight.
         incident.priority = priority;
+        }
     }
 
     if (!auditEntries.length) {
@@ -506,7 +502,7 @@ const updateIncident = asyncHandler(async (req, res) => {
  * illegal jump is rejected here even if the UI would have allowed it.
  */
 const updateStatus = asyncHandler(async (req, res) => {
-    const { status, resolutionNote, updateLinkedChildren } = req.body;
+    const { status, resolutionNote, updateLinkedChildren, onHoldReason, duplicateOf } = req.body;
 
     const incident = await Incident.findById(req.params.id).populate(POPULATE);
     if (!incident) throw ApiError.notFound("Incident not found");
@@ -519,6 +515,16 @@ const updateStatus = asyncHandler(async (req, res) => {
 
     const oldStatus = incident.status;
     permissions.assertValidTransition(oldStatus, status);
+
+    if (status === STATUS.ON_HOLD && !String(onHoldReason || "").trim()) {
+        throw ApiError.badRequest("An On Hold reason is required");
+    }
+    if (status === STATUS.DUPLICATE) {
+        if (!mongoose.Types.ObjectId.isValid(duplicateOf) || String(duplicateOf) === String(incident._id)) throw ApiError.badRequest("A different original incident is required for Duplicate");
+        const original = await Incident.findById(duplicateOf).select("_id");
+        if (!original) throw ApiError.badRequest("Original incident was not found");
+        incident.duplicateOf = original._id;
+    }
 
     if (status === STATUS.CLOSED && [PRIORITY.HIGH, PRIORITY.CRITICAL].includes(incident.priority)) {
         const approvedRca = await RootCauseAnalysis.exists({ incident: incident._id, status: "approved" });
@@ -537,6 +543,17 @@ const updateStatus = asyncHandler(async (req, res) => {
 
     incident.status = status;
 
+    if (status === STATUS.ON_HOLD) {
+        incident.onHoldReason = String(onHoldReason).trim();
+        incident.slaPausedAt = new Date();
+    } else if (oldStatus === STATUS.ON_HOLD && incident.slaPausedAt) {
+        const pauseMs = Date.now() - new Date(incident.slaPausedAt).getTime();
+        incident.slaPausedDurationMs += pauseMs;
+        if (incident.dueBy) incident.dueBy = new Date(new Date(incident.dueBy).getTime() + pauseMs);
+        if (!incident.acknowledgedAt && incident.acknowledgementDueBy) incident.acknowledgementDueBy = new Date(new Date(incident.acknowledgementDueBy).getTime() + pauseMs);
+        incident.slaPausedAt = null;
+    }
+
     if (status === STATUS.RESOLVED) {
         incident.resolvedAt = new Date();
         if (resolutionNote) incident.resolutionNote = resolutionNote;
@@ -548,10 +565,11 @@ const updateStatus = asyncHandler(async (req, res) => {
     }
 
     // Reopening clears the completion stamps so SLA reporting stays honest.
-    const isReopen = TERMINAL_STATUSES.includes(oldStatus) && status === STATUS.IN_PROGRESS;
+    const isReopen = oldStatus === STATUS.RESOLVED && status === STATUS.IN_PROGRESS;
     if (isReopen) {
         incident.resolvedAt = null;
         incident.closedAt = null;
+        incident.reopenCount = (incident.reopenCount || 0) + 1;
     }
 
     await incident.save();
@@ -592,6 +610,9 @@ const updateStatus = asyncHandler(async (req, res) => {
         newValue: STATUS_LABELS[status],
         note: resolutionNote || null,
     });
+    if (status === STATUS.ON_HOLD || oldStatus === STATUS.ON_HOLD) {
+        await activityService.record({ incident: incident._id, action: status === STATUS.ON_HOLD ? ACTIVITY_ACTIONS.SLA_PAUSED : ACTIVITY_ACTIONS.SLA_RESUMED, performedBy: req.user._id, note: status === STATUS.ON_HOLD ? `SLA paused: ${incident.onHoldReason}` : "SLA resumed; deadlines extended by the hold duration" });
+    }
 
     logger.event("incident_status_changed", {
         incidentId: incident.id,
@@ -656,6 +677,26 @@ const getAssignmentOptions = asyncHandler(async (req, res) => {
             members: membersByDepartment.get(String(department._id)) || [],
         })),
     });
+});
+
+/** Records the declaration and coordination fields for a P1 major incident. */
+const declareMajorIncident = asyncHandler(async (req, res) => {
+    const incident = await Incident.findById(req.params.id);
+    if (!incident) throw ApiError.notFound("Incident not found");
+    if (!permissions.isStaff(req.user)) throw ApiError.forbidden("Only support staff can declare a major incident");
+    if (incident.priority !== PRIORITY.CRITICAL) throw ApiError.badRequest("Only P1 (Critical) incidents can be declared major incidents");
+    const { reason, incidentManager, bridge, updateCadenceMinutes } = req.body;
+    if (!String(reason || "").trim()) throw ApiError.badRequest("A major incident reason is required");
+    incident.isMajorIncident = true;
+    incident.majorIncidentDeclaredAt = incident.majorIncidentDeclaredAt || new Date();
+    incident.majorIncidentDeclaredBy = incident.majorIncidentDeclaredBy || req.user._id;
+    incident.majorIncidentReason = String(reason).trim();
+    incident.incidentManager = incidentManager || req.user._id;
+    incident.majorIncidentBridge = String(bridge || "").trim();
+    incident.majorIncidentUpdateCadenceMinutes = updateCadenceMinutes || null;
+    await incident.save();
+    await activityService.record({ incident: incident._id, action: ACTIVITY_ACTIONS.MAJOR_INCIDENT_DECLARED, performedBy: req.user._id, note: `Major incident declared: ${incident.majorIncidentReason}` });
+    return successResponse(res, 200, "Major incident declared", { incident: decorate(incident.toObject()) });
 });
 /**
  * PATCH /api/v1/incidents/:id/assign  (FR-05)
@@ -1340,6 +1381,7 @@ module.exports = {
     createIncident,
     updateIncident,
     updateStatus,
+    declareMajorIncident,
     getAssignmentOptions,
     assignIncident,
     deleteIncident,

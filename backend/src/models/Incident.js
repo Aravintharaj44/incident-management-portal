@@ -55,6 +55,8 @@ const incidentSchema = new mongoose.Schema(
             default: 2,
             index: true,
         },
+        impact: { type: String, enum: ["low", "medium", "high"], default: null },
+        urgency: { type: String, enum: ["low", "medium", "high"], default: null },
 
         status: {
             type: String,
@@ -94,6 +96,10 @@ const incidentSchema = new mongoose.Schema(
             default: null,
             index: true,
         },
+        acknowledgementDueBy: { type: Date, default: null, index: true },
+        slaPausedAt: { type: Date, default: null },
+        slaPausedDurationMs: { type: Number, default: 0 },
+        onHoldReason: { type: String, default: null, trim: true, maxlength: 500 },
         overdueNotifiedAt: {
             type: Date,
             default: null,
@@ -101,6 +107,7 @@ const incidentSchema = new mongoose.Schema(
         },
         resolvedAt: { type: Date, default: null },
         closedAt: { type: Date, default: null },
+        reopenCount: { type: Number, default: 0 },
 
         // On-call acknowledgement & escalation tracking (FR4-23/FR4-24)
         acknowledgedAt: {
@@ -158,6 +165,15 @@ const incidentSchema = new mongoose.Schema(
         attachmentCount: { type: Number, default: 0 },
 
         isMajorIncident: { type: Boolean, default: false, index: true },
+        majorIncidentDeclaredAt: { type: Date, default: null },
+        majorIncidentDeclaredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        majorIncidentReason: { type: String, default: "", maxlength: 2000 },
+        incidentManager: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        majorIncidentBridge: { type: String, default: "", maxlength: 500 },
+        majorIncidentUpdateCadenceMinutes: { type: Number, default: null, min: 1 },
+        pirSummary: { type: String, default: "", maxlength: 5000 },
+        pirCompletedAt: { type: Date, default: null },
+        duplicateOf: { type: mongoose.Schema.Types.ObjectId, ref: "Incident", default: null, index: true },
 
         intakeSource: {
             type: String,
@@ -225,6 +241,7 @@ incidentSchema.pre("save", async function assignNumberAndDueDate() {
         if (!this.dueBy) {
             this.dueBy = this.constructor.calculateDueBy(this.priority, this.createdAt);
         }
+        if (!this.acknowledgementDueBy) this.acknowledgementDueBy = new Date(this.createdAt.getTime() + this.ackWindowMinutes * 60000);
     } else if (this.isModified("priority")) {
         this.dueBy = this.constructor.calculateDueBy(this.priority, this.createdAt);
     }

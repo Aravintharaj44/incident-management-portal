@@ -7,6 +7,7 @@ const {
     ACTION_ITEM_STATUS_VALUES,
     KBA_STATUS_VALUE,
     OAUTH_SCOPE_VALUES,
+    SUPPORT_AGENT_DESIGNATION_VALUES,
 } = require("../constants");
 /**
  * Request validation rules (BRD s17: "Validate all inputs on the backend, even
@@ -89,6 +90,16 @@ const userValidators = {
             .withMessage("Please provide a valid email address")
             .normalizeEmail({ gmail_remove_dots: false }),
         password(),
+        body("designation")
+            .optional({ nullable: true })
+            .trim()
+            .isIn(SUPPORT_AGENT_DESIGNATION_VALUES)
+            .withMessage(
+                `Designation must be one of: ${SUPPORT_AGENT_DESIGNATION_VALUES.join(", ")}`
+            )
+            .isLength({ max: 100 })
+            .withMessage("Designation cannot exceed 100 characters")
+            .customSanitizer(stripTags),
         body("role")
             .optional()
             .isIn(ROLE_VALUES)
@@ -107,6 +118,16 @@ const userValidators = {
             .optional()
             .isIn(ROLE_VALUES)
             .withMessage(`Role must be one of: ${ROLE_VALUES.join(", ")}`),
+        body("designation")
+            .optional({ nullable: true })
+            .trim()
+            .isIn(SUPPORT_AGENT_DESIGNATION_VALUES)
+            .withMessage(
+                `Designation must be one of: ${SUPPORT_AGENT_DESIGNATION_VALUES.join(", ")}`
+            )
+            .isLength({ max: 100 })
+            .withMessage("Designation cannot exceed 100 characters")
+            .customSanitizer(stripTags),
         body("isActive").optional().isBoolean().withMessage("isActive must be true or false"),
     ],
 
@@ -185,10 +206,9 @@ const incidentValidators = {
             .isLength({ min: 10, max: 5000 })
             .withMessage("Description must be between 10 and 5000 characters"),
         body("category").isMongoId().withMessage("Please select a category"),
-        body("priority")
-            .optional()
-            .isIn(PRIORITY_VALUES)
-            .withMessage(`Priority must be one of: ${PRIORITY_VALUES.join(", ")}`),
+        body("impact").optional().isIn(["low", "medium", "high"]).withMessage("Impact must be low, medium, or high"),
+        body("urgency").optional().isIn(["low", "medium", "high"]).withMessage("Urgency must be low, medium, or high"),
+        body("priority").optional().isIn(PRIORITY_VALUES).withMessage(`Priority must be one of: ${PRIORITY_VALUES.join(", ")}`),
     ],
 
     update: [
@@ -204,10 +224,8 @@ const incidentValidators = {
             .isLength({ min: 10, max: 5000 })
             .withMessage("Description must be between 10 and 5000 characters"),
         body("category").optional().isMongoId().withMessage("Please select a valid category"),
-        body("priority")
-            .optional()
-            .isIn(PRIORITY_VALUES)
-            .withMessage(`Priority must be one of: ${PRIORITY_VALUES.join(", ")}`),
+        body("impact").optional().isIn(["low", "medium", "high"]).withMessage("Impact must be low, medium, or high"),
+        body("urgency").optional().isIn(["low", "medium", "high"]).withMessage("Urgency must be low, medium, or high"),
     ],
 
     updateStatus: [
@@ -221,6 +239,8 @@ const incidentValidators = {
             .trim()
             .isLength({ max: 2000 })
             .withMessage("Resolution note cannot exceed 2000 characters"),
+        body("onHoldReason").optional().trim().isLength({ min: 2, max: 500 }),
+        body("duplicateOf").optional().isMongoId().withMessage("Original incident must be a valid id"),
     ],
 
     assign: [
@@ -748,21 +768,21 @@ const oauthClientValidators = {
 };
 
 const submitSurveyValidator =
- [
-    body("rating")
-        .exists()
-        .withMessage("Rating is required")
-        .isInt({ min: 1, max: 5 })
-        .withMessage("Rating must be between 1 and 5"),
+    [
+        body("rating")
+            .exists()
+            .withMessage("Rating is required")
+            .isInt({ min: 1, max: 5 })
+            .withMessage("Rating must be between 1 and 5"),
 
-    body("comments")
-        .optional({ nullable: true })
-        .isString()
-        .withMessage("Comments must be a string")
-        .trim()
-        .isLength({ max: 5000 })
-        .withMessage("Comments cannot exceed 5000 characters"),
-];
+        body("comments")
+            .optional({ nullable: true })
+            .isString()
+            .withMessage("Comments must be a string")
+            .trim()
+            .isLength({ max: 5000 })
+            .withMessage("Comments cannot exceed 5000 characters"),
+    ];
 
 const getCsatTrendValidator = [
     query("days")

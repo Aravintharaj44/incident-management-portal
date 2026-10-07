@@ -8,10 +8,6 @@ const { successResponse, paginatedResponse } = require("../utils/apiResponse");
 const { getPagination } = require("../utils/pagination");
 const { ROLES, ROLE_VALUES, TERMINAL_STATUSES } = require("../constants");
 
-/**
- * GET /api/v1/users  (Admin only) - FR-13
- * Keyword search plus role/status filters, paginated.
- */
 const listUsers = asyncHandler(async (req, res) => {
     const { search, role, isActive } = req.query;
     const { page, limit, skip } = getPagination(req.query, { defaultLimit: 10 });
@@ -78,7 +74,14 @@ const getUser = asyncHandler(async (req, res) => {
 
 /** POST /api/v1/users  (Admin only) - create a user with any role. */
 const createUser = asyncHandler(async (req, res) => {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, designation } = req.body;
+
+    const normalizedRole = role || ROLES.USER;
+    if (designation && normalizedRole !== ROLES.AGENT) {
+        throw ApiError.badRequest(
+            "Designation can only be assigned to a support agent"
+        );
+    }
 
     const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) throw ApiError.conflict("An account with that email already exists");
@@ -88,6 +91,7 @@ const createUser = asyncHandler(async (req, res) => {
         email: email.toLowerCase(),
         password,
         role: role || ROLES.USER,
+        designation: normalizedRole === ROLES.AGENT ? designation || null : null,
     });
 
     logger.event("user_created", { userId: user.id, role: user.role, by: req.user.id });
@@ -97,7 +101,7 @@ const createUser = asyncHandler(async (req, res) => {
 
 /** PATCH /api/v1/users/:id  (Admin only) - name, role and active flag. */
 const updateUser = asyncHandler(async (req, res) => {
-    const { name, role, isActive } = req.body;
+    const { name, role, isActive, designation } = req.body;
 
     const user = await User.findById(req.params.id);
     if (!user) throw ApiError.notFound("User not found");
@@ -126,15 +130,43 @@ const updateUser = asyncHandler(async (req, res) => {
         if (openWork > 0) {
             throw ApiError.badRequest(
                 `${user.name} still has ${openWork} open incident(s) assigned. ` +
-                    "Reassign them before changing this account."
+                "Reassign them before changing this account."
             );
         }
+    }
+    if (
+        designation !== undefined &&
+        designation !== null &&
+        user.role !== ROLES.AGENT &&
+        role !== ROLES.AGENT
+    ) {
+        throw ApiError.badRequest(
+            "Designation can only be assigned to a support agent"
+        );
+    }
+
+    const nextRole = role ?? user.role;
+
+    if (
+        designation &&
+        nextRole !== ROLES.AGENT
+    ) {
+        throw ApiError.badRequest(
+            "L1/L2/L3 designation requires the user to be a support agent"
+        );
+    }
+
+    if (
+        role &&
+        role !== ROLES.AGENT
+    ) {
+        user.designation = null;
     }
 
     if (name !== undefined) user.name = name;
     if (role !== undefined) user.role = role;
     if (isActive !== undefined) user.isActive = isActive;
-
+    if (designation !== undefined) user.designation = designation;
     await user.save();
 
     logger.event("user_updated", { userId: user.id, by: req.user.id });
@@ -177,7 +209,7 @@ const deactivateUser = asyncHandler(async (req, res) => {
     if (openWork > 0) {
         throw ApiError.badRequest(
             `${user.name} still has ${openWork} open incident(s) assigned. ` +
-                "Reassign them before deactivating this account."
+            "Reassign them before deactivating this account."
         );
     }
 

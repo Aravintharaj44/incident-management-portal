@@ -45,7 +45,6 @@ import RcaPanel from "../components/incidents/RcaPanel";
 import IncidentKBArticles from "../components/incidents/IncidentKBArticles";
 import { ErrorView, LoadingView } from "../components/common/StateViews";
 import {
-    PRIORITY_OPTIONS,
     STATUS,
     STATUS_LABELS,
     STATUS_TRANSITIONS,
@@ -77,6 +76,8 @@ const IncidentDetailPage = () => {
     const [editForm] = Form.useForm();
 
     const [resolveOpen, setResolveOpen] = useState(false);
+    const [onHoldOpen, setOnHoldOpen] = useState(false);
+    const [onHoldReason, setOnHoldReason] = useState("");
     const [resolutionNote, setResolutionNote] = useState("");
     const [updateLinkedChildren, setUpdateLinkedChildren] = useState(false);
 
@@ -151,9 +152,12 @@ const IncidentDetailPage = () => {
             setResolveOpen(true);
             return;
         }
+        if (nextStatus === STATUS.ON_HOLD) {
+            setOnHoldOpen(true);
+            return;
+        }
 
-        const isReopen =
-            TERMINAL_STATUSES.includes(incident.status) && nextStatus === STATUS.IN_PROGRESS;
+        const isReopen = incident.status === STATUS.RESOLVED && nextStatus === STATUS.IN_PROGRESS;
 
         const proceed = () =>
             runAction(
@@ -166,7 +170,7 @@ const IncidentDetailPage = () => {
                 title: isReopen ? "Reopen this incident?" : "Close this incident?",
                 content: isReopen
                     ? "It will move back to In Progress and the resolution timestamps will be cleared."
-                    : "Closed incidents can still be reopened, but they leave the active queue.",
+                    : "Closed is a final state. A later recurrence must be logged as a new related incident.",
                 okText: isReopen ? "Reopen" : "Close incident",
                 onOk: proceed,
             });
@@ -174,6 +178,18 @@ const IncidentDetailPage = () => {
         }
 
         proceed();
+    };
+
+    const handleOnHold = async () => {
+        if (!onHoldReason.trim()) {
+            message.error("Provide a reason before placing an incident on hold");
+            return;
+        }
+        const done = await runAction(
+            () => incidentApi.updateStatus(id, { status: STATUS.ON_HOLD, onHoldReason: onHoldReason.trim() }),
+            "Incident placed on hold; SLA clock paused"
+        );
+        if (done) { setOnHoldOpen(false); setOnHoldReason(""); }
     };
 
     const handleResolve = async () => {
@@ -283,7 +299,8 @@ const IncidentDetailPage = () => {
             title: incident.title,
             description: incident.description,
             category: incident.category?._id,
-            priority: incident.priority,
+            impact: incident.impact,
+            urgency: incident.urgency,
         });
         setEditOpen(true);
     };
@@ -650,6 +667,18 @@ const IncidentDetailPage = () => {
             </Row>
 
             <Modal
+                title="Place incident on hold"
+                open={onHoldOpen}
+                onCancel={() => { setOnHoldOpen(false); setOnHoldReason(""); }}
+                onOk={handleOnHold}
+                confirmLoading={acting}
+                okText="Place on hold"
+            >
+                <Text type="secondary">Explain why work is waiting. Common reasons are Awaiting Customer or Awaiting Vendor.</Text>
+                <TextArea value={onHoldReason} onChange={(event) => setOnHoldReason(event.target.value)} rows={3} maxLength={500} style={{ marginTop: 12 }} />
+            </Modal>
+
+            <Modal
                 title="Link to a problem"
                 open={problemOpen}
                 onCancel={() => {
@@ -723,15 +752,8 @@ const IncidentDetailPage = () => {
                         />
                     </Form.Item>
 
-                    {isStaff && (
-                        <Form.Item
-                            name="priority"
-                            label="Priority"
-                            extra="Changing the priority recalculates the SLA target."
-                        >
-                            <Select options={PRIORITY_OPTIONS} />
-                        </Form.Item>
-                    )}
+                    <Form.Item name="impact" label="Impact"><Select options={["low", "medium", "high"].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} /></Form.Item>
+                    <Form.Item name="urgency" label="Urgency"><Select options={["low", "medium", "high"].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} /></Form.Item>
                 </Form>
             </Modal>
 

@@ -39,7 +39,7 @@ describe("IncidentCreatePage", () => {
         await user.click(await screen.findByText("Network", { selector: ".ant-select-item-option-content" }));
         await user.click(screen.getByRole("button", { name: /Submit incident/ }));
 
-        expect(mocks.create).toHaveBeenCalledWith({ title: "VPN disconnects for finance", description: "VPN disconnects while finance users submit reports.", category: "cat-network", priority: "medium" });
+        expect(mocks.create).toHaveBeenCalledWith({ title: "VPN disconnects for finance", description: "VPN disconnects while finance users submit reports.", category: "cat-network", impact: "medium", urgency: "medium" });
         expect(await screen.findByText("Incident detail destination")).toBeInTheDocument();
     });
 

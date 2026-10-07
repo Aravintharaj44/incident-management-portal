@@ -23,15 +23,6 @@ const isCurrentlyActive = (raw) => {
     return raw.Employeestatus === "Active" && !raw.Dateofexit;
 };
 
-/**
- * The single source of truth for "what a Zoho employee record means to our
- * app". Takes one raw Zoho object (already flattened) and returns a plain,
- * normalised shape that lines up with what User.js and DepartmentUser.js
- * need - nothing downstream needs to know Zoho's field names.
- *
- * Returns null for records that can't be synced at all (no email), so the
- * caller can skip them with a clear reason instead of half-creating a user.
- */
 const mapEmployeeToUser = (raw) => {
     if (!raw || !raw.EmailID) {
         return null;

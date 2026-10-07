@@ -77,8 +77,6 @@ const env = {
 
     upload: {
         dir: (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION)
-            // Vercel sets VERCEL=1 automatically — force /tmp regardless of UPLOAD_DIR,
-            // since /var/task is read-only and nothing outside /tmp is writable.
             ? path.join(os.tmpdir(), "incident-portal-uploads")
             : process.env.UPLOAD_DIR
                 ? path.resolve(process.env.UPLOAD_DIR)
@@ -124,24 +122,14 @@ const env = {
         max: toInt(process.env.RATE_LIMIT_MAX, 1000),
         authMax: toInt(process.env.RATE_LIMIT_AUTH_MAX, 30),
     },
-
-    // FR5-09: daily API credit limit per OAuth client for the public REST API.
     publicApiDailyCredits: toInt(process.env.PUBLIC_API_DAILY_CREDITS, 1000),
-
-    // Set to false to stop the seed script from wiping existing collections.
     seedResetsData: toBool(process.env.SEED_RESET, true),
-
-    // FR4-29: CSAT rating below this threshold flags the incident for manager follow-up.
     csatFollowupThreshold: toInt(process.env.CSAT_FOLLOWUP_THRESHOLD, 3),
 };
 
 env.isProduction = env.nodeEnv === "production";
 env.isTest = env.nodeEnv === "test";
 
-/**
- * Fail fast on missing required configuration. Called from server.js before
- * anything else happens.
- */
 const validateEnv = () => {
     const missing = [];
 

@@ -3,13 +3,21 @@ const { SLA_HOURS, TERMINAL_STATUSES, PRIORITY_LABELS } = require("../constants"
 
 const overdueFilter = (now = new Date()) => ({
     dueBy: { $lt: now },
-    status: { $nin: TERMINAL_STATUSES },
+    status: { $nin: [...TERMINAL_STATUSES, "on_hold"] },
 });
 
 const isOverdue = (incident, now = new Date()) => {
     if (!incident || !incident.dueBy) return false;
     if (TERMINAL_STATUSES.includes(incident.status)) return false;
+    if (incident.status === "on_hold") return false;
     return new Date(incident.dueBy).getTime() < now.getTime();
+};
+
+const acknowledgementState = (incident, now = new Date()) => {
+    if (!incident?.acknowledgementDueBy) return "none";
+    if (incident.acknowledgedAt) return new Date(incident.acknowledgedAt) <= new Date(incident.acknowledgementDueBy) ? "met" : "breached";
+    if (incident.slaPausedAt) return "on_hold";
+    return new Date(incident.acknowledgementDueBy) < now ? "breached" : "on_track";
 };
 
 /**
@@ -21,6 +29,8 @@ const isOverdue = (incident, now = new Date()) => {
  */
 const slaState = (incident, now = new Date()) => {
     if (!incident || !incident.dueBy) return "none";
+
+    if (incident.status === "on_hold") return "on_hold";
 
     const due = new Date(incident.dueBy).getTime();
 
@@ -45,4 +55,4 @@ const slaTargets = () =>
         hours,
     }));
 
-module.exports = { overdueFilter, isOverdue, slaState, slaTargets, SLA_HOURS };
+module.exports = { overdueFilter, isOverdue, slaState, acknowledgementState, slaTargets, SLA_HOURS };

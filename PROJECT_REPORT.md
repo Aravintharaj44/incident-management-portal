@@ -108,7 +108,7 @@ Supported workflow states are:
 New → In Progress → On Hold / Resolved / Closed
 On Hold → In Progress / Resolved / Closed
 Resolved → Closed or reopened to In Progress
-Closed → reopened to In Progress
+Closed is final; a recurrence is created as a new linked incident.
 ```
 
 The backend defines and validates permitted state transitions. Incident lists
@@ -116,13 +116,30 @@ support filtering, search, pagination, CSV export, recent-incident views, and
 dashboard analytics. An end user’s view is restricted to incidents they are
 allowed to see; staff views support operations work.
 
+The lifecycle includes New, Assigned, Acknowledged, Investigating (the stored
+`in_progress` state), On Hold, Resolved, Closed, Cancelled, and Duplicate.
+On Hold requires a reason, including Awaiting Customer or Awaiting Vendor.
+Resolved incidents may be reopened to Investigating. Closed is final: a later
+recurrence must be raised as a new incident and linked to the closed record.
+Duplicate incidents retain a link to their original incident.
+
 ### 6.3 Priority and SLA management
 
-Priority levels are Low, Medium, High, and Critical. The current SLA targets
-implemented in the constants are 72, 24, 8, and 4 hours respectively. When an
-incident is created, its due date is calculated from its priority; a priority
-change recalculates the target. The model exposes `isOverdue` and
-`hoursToDue` virtual values, and scheduled jobs can issue overdue handling.
+The portal presents its existing stored priority values as P1-P4: P1/Critical,
+P2/High, P3/Medium, and P4/Low. New portal submissions derive priority from a
+central Impact x Urgency matrix: High/High=P1; High/Medium or High/Low=P2;
+Medium/High=P2; Medium/Medium, Medium/Low, or Low/High=P3; and Low/Medium or
+Low/Low=P4. The requester cannot directly choose a calculated priority.
+Existing records and legacy API clients using the four stored priority values
+remain compatible.
+
+Resolution SLA targets are P1 4 hours, P2 8 hours, P3 24 hours, and P4 72
+hours. The implementation uses elapsed 24x7 time, not a business-hours
+calendar. Each incident also has an acknowledgement deadline based on the
+active on-call acknowledgement window (15 minutes by default, or a configured
+roster value). The API exposes separate acknowledgement and resolution SLA
+states. On Hold requires a reason, pauses both clocks, and extends deadlines
+by the hold duration on resume; pause/resume activity is audited.
 
 ### 6.4 Assignment, on-call, and escalation
 
@@ -134,6 +151,13 @@ change recalculates the target. The model exposes `isOverdue` and
   escalation time. The default acknowledgement window is 15 minutes.
 - A selection service considers on-call eligibility and workload, with fallback
   to eligible department staff when a roster is unavailable.
+
+Assignment determines ownership; escalation is a separate on-call response
+process. The roster's acknowledgement window and ordered responders drive
+escalation of unacknowledged Critical alerts. Configured responders can model
+the technical L1 -> L2 -> L3/vendor and management Team Lead -> Incident
+Manager -> Delivery Head paths. No fixed organisation-wide escalation threshold
+is claimed because the repository does not configure one.
 
 ### 6.5 Collaboration and evidence
 
@@ -161,6 +185,16 @@ are Draft, In Review, Approved, and Returned.
 
 ### 6.7 RCA action items
 
+### 6.6.1 Major incidents
+
+Support staff can declare a P1/Critical incident a Major Incident. The record
+captures the declarer, declaration time, reason, Incident Manager, optional
+bridge/channel reference, and optional update cadence, and adds an activity
+entry. Existing incident linking supports child incidents under a major
+incident. The RCA and action-item workflow provides the post-incident review
+and corrective/preventive action record. No regulatory reporting deadline is
+configured or claimed.
+
 Action items belong to an RCA and contain an owner, due date, description,
 completion evidence, and status. Their statuses are Open, In Progress, Done,
 and Overdue. They include due-soon/overdue notification timestamps and are
@@ -186,6 +220,20 @@ problems to assist resolution and prevent repeat work.
   incident for follow-up.
 - Dashboard endpoints expose summary figures, charts, recent incidents,
   advanced analytics, staff action-item summary, and admin workload data.
+
+  The advanced endpoint calculates MTTA, MTTR, acknowledgement and resolution
+  SLA compliance, reopen rate, backlog-age buckets, and duplicate-linked repeat
+  incidents using incident timestamps and records; it does not return static
+  KPI values.
+
+### 6.9.1 Current operational limitations
+
+- Automatic closure of Resolved incidents is not implemented. The configurable
+  auto-close period requested by the review therefore remains a follow-up item.
+- The on-call roster supplies configurable acknowledgement windows and ordered
+  escalation responders. Separate configurable resolution-escalation thresholds
+  and named organisation-wide L1/L2/L3/vendor and management role templates are
+  not yet implemented.
 
 ### 6.10 Integrations and external API
 
