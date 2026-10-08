@@ -2,7 +2,7 @@ const cron = require("node-cron");
 const logger = require("../utils/logger");
 const { runSync } = require("../services/zohoSyncService");
 
-const SCHEDULE = process.env.ZOHO_SYNC_CRON || "*/15 * * * *";
+const SCHEDULE = process.env.ZOHO_SYNC_CRON || "* * * * *";
 let running = false;
 
 const runNow = async (options = {}) => {

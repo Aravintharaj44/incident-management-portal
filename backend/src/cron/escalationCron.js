@@ -3,7 +3,7 @@ const logger = require("../utils/logger");
 const { processUnacknowledgedEscalations } = require("../services/escalationService");
 
 const startEscalationJob = () => {
-    cron.schedule("* * * * *", async () => {
+    cron.schedule("*/20 * * * *", async () => {
         await processUnacknowledgedEscalations();
     });
 

@@ -4,7 +4,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const { successResponse } = require("../utils/apiResponse");
 const activityLogService = require("../services/activityService");
-const { ACTIVITY_ACTIONS } = require("../constants");
+const { ACTIVITY_ACTIONS, STATUS } = require("../constants");
 const createRoster = asyncHandler(async (req, res) => {
     const { department, category, startTime, endTime, ackWindowMinutes, escalationChain } = req.body;
 
@@ -33,19 +33,17 @@ const acknowledgeIncident = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const incident = await Incident.findByIdAndUpdate(
-            id,
-            {
-                acknowledgedAt: new Date(),
-                acknowledgedBy: req.user._id,
-                isAcknowledged: true
-            },
-            { new: true }
-        );
+        const incident = await Incident.findById(id);
 
         if (!incident) {
             return res.status(404).json({ message: "Incident not found" });
         }
+        if (incident.acknowledgedAt) return res.status(200).json({ success: true, message: "Incident already acknowledged", data: incident });
+        incident.acknowledgedAt = new Date();
+        incident.acknowledgedBy = req.user._id;
+        incident.isAcknowledged = true;
+        if ([STATUS.NEW, STATUS.ASSIGNED].includes(incident.status)) incident.status = STATUS.ACKNOWLEDGED;
+        await incident.save();
 
         if (!incident.acknowledgedAt) {
             return res.status(500).json({

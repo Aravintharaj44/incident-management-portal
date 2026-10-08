@@ -106,7 +106,7 @@ const DepartmentsPage = () => {
 
     const columns = [
         { title: "Department", dataIndex: "title", render: (title, record) => <div><Text strong>{title}</Text><Text type="secondary" style={{ display: "block", fontSize: 12 }}>{record.description}</Text></div> },
-        { title: "Head", dataIndex: "headOfDepartment", render: (head) => head ? <div><Text>{head.name}</Text><Text type="secondary" style={{ display: "block", fontSize: 12 }}>{head.email}</Text></div> : <Text type="secondary">ï¿½</Text> },
+        { title: "Head", dataIndex: "headOfDepartment", render: (head) => head ? <div><Text>{head.name}</Text><Text type="secondary" style={{ display: "block", fontSize: 12 }}>{head.email}</Text></div> : <Text type="secondary"></Text> },
         { title: "Categories", dataIndex: "categories", render: (values) => <Space size={[2, 4]} wrap>{values.map((category) => <Tag key={category._id}>{category.name}</Tag>)}</Space> },
         { title: "Members", dataIndex: "memberCount", width: 100, render: (value) => <Tag color="blue">{value}</Tag> },
         { title: "Active", dataIndex: "isActive", width: 100, render: (value) => <Tag color={value ? "green" : "default"}>{value ? "Yes" : "No"}</Tag> },

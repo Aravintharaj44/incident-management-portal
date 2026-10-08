@@ -77,8 +77,6 @@ const env = {
 
     upload: {
         dir: (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION)
-            // Vercel sets VERCEL=1 automatically — force /tmp regardless of UPLOAD_DIR,
-            // since /var/task is read-only and nothing outside /tmp is writable.
             ? path.join(os.tmpdir(), "incident-portal-uploads")
             : process.env.UPLOAD_DIR
                 ? path.resolve(process.env.UPLOAD_DIR)
@@ -102,6 +100,12 @@ const env = {
             endpoint: process.env.WASABI_ENDPOINT || "",
         },
     },
+    ai: {
+        gemini: { apiKey: process.env.GEMINI_API_KEY || "", model: process.env.GEMINI_MODEL || "gemini-flash-latest" },
+        codecraft: { apiKey: process.env.CODECRAFT_API_KEY || "", model: process.env.CODECRAFT_MODEL || "claude-sonnet-5", baseURL: process.env.CODECRAFT_BASE_URL || "", supportsImages: toBool(process.env.CODECRAFT_SUPPORTS_IMAGES, false) },
+        geminiCooldownSeconds: toInt(process.env.AI_GEMINI_COOLDOWN_SECONDS, 300),
+        geminiFailureThreshold: toInt(process.env.AI_GEMINI_FAILURE_THRESHOLD, 2),
+    },
     mail: {
         enabled: toBool(process.env.MAIL_ENABLED, false),
         host: process.env.SMTP_HOST,
@@ -118,24 +122,14 @@ const env = {
         max: toInt(process.env.RATE_LIMIT_MAX, 1000),
         authMax: toInt(process.env.RATE_LIMIT_AUTH_MAX, 30),
     },
-
-    // FR5-09: daily API credit limit per OAuth client for the public REST API.
     publicApiDailyCredits: toInt(process.env.PUBLIC_API_DAILY_CREDITS, 1000),
-
-    // Set to false to stop the seed script from wiping existing collections.
     seedResetsData: toBool(process.env.SEED_RESET, true),
-
-    // FR4-29: CSAT rating below this threshold flags the incident for manager follow-up.
     csatFollowupThreshold: toInt(process.env.CSAT_FOLLOWUP_THRESHOLD, 3),
 };
 
 env.isProduction = env.nodeEnv === "production";
 env.isTest = env.nodeEnv === "test";
 
-/**
- * Fail fast on missing required configuration. Called from server.js before
- * anything else happens.
- */
 const validateEnv = () => {
     const missing = [];
 
@@ -174,6 +168,10 @@ const validateEnv = () => {
         throw new Error(
             "OAUTH_ACCESS_TOKEN_EXPIRES_IN must be at least 60 seconds."
         );
+    }
+
+    if (env.ai.codecraft.apiKey && (!env.ai.codecraft.baseURL || !env.ai.codecraft.model)) {
+        throw new Error("CODECRAFT_API_KEY requires CODECRAFT_BASE_URL and CODECRAFT_MODEL.");
     }
 
     if (env.mail.enabled && (!env.mail.host || !env.mail.user || !env.mail.pass)) {

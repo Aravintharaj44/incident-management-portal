@@ -348,7 +348,7 @@ const prefixFilter = (filter, prefix) => Object.fromEntries(
 const getAdvancedAnalytics = asyncHandler(async (req, res) => {
     const filter = await advancedIncidentFilter(req);
     const incidentFilter = prefixFilter(filter, "incident");
-    const [trend, rootCauses, majorIncidents, performance] = await Promise.all([
+    const [trend, rootCauses, majorIncidents, performance, kpiRows, backlogAgeing, repeatIncidents] = await Promise.all([
         Incident.aggregate([{ $match: filter }, { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } }, { $sort: { _id: 1 } }]),
         RootCauseAnalysis.aggregate([
             { $match: { status: "approved" } },
@@ -369,8 +369,35 @@ const getAdvancedAnalytics = asyncHandler(async (req, res) => {
             { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "agent" } }, { $unwind: "$agent" },
             { $project: { _id: 0, agentId: "$_id", name: "$agent.name", resolved: 1, averageHours: { $round: [{ $divide: ["$avgMs", 3600000] }, 1] }, slaCompliance: { $round: [{ $multiply: [{ $divide: ["$slaMet", "$resolved"] }, 100] }, 1] } } }, { $sort: { resolved: -1 } },
         ]),
+        Incident.aggregate([
+            { $match: filter },
+            { $group: {
+                _id: null,
+                incidents: { $sum: 1 },
+                acknowledged: { $sum: { $cond: [{ $ne: ["$acknowledgedAt", null] }, 1, 0] } },
+                mttaMs: { $avg: { $cond: [{ $ne: ["$acknowledgedAt", null] }, { $subtract: ["$acknowledgedAt", "$createdAt"] }, null] } },
+                resolved: { $sum: { $cond: [{ $ne: ["$resolvedAt", null] }, 1, 0] } },
+                mttrMs: { $avg: { $cond: [{ $ne: ["$resolvedAt", null] }, { $subtract: ["$resolvedAt", "$createdAt"] }, null] } },
+                acknowledgementSlaMet: { $sum: { $cond: [{ $and: [{ $ne: ["$acknowledgedAt", null] }, { $lte: ["$acknowledgedAt", "$acknowledgementDueBy"] }] }, 1, 0] } },
+                resolutionSlaMet: { $sum: { $cond: [{ $and: [{ $ne: ["$resolvedAt", null] }, { $lte: ["$resolvedAt", "$dueBy"] }] }, 1, 0] } },
+                reopened: { $sum: { $cond: [{ $gt: ["$reopenCount", 0] }, 1, 0] } },
+            } },
+        ]),
+        Incident.aggregate([
+            { $match: { ...filter, status: { $nin: TERMINAL_STATUSES } } },
+            { $project: { ageDays: { $divide: [{ $subtract: [new Date(), "$createdAt"] }, 86400000] } } },
+            { $bucket: { groupBy: "$ageDays", boundaries: [0, 1, 3, 7, 30, 1000000], default: "unknown", output: { count: { $sum: 1 } } } },
+        ]),
+        Incident.aggregate([
+            { $match: { ...filter, duplicateOf: { $ne: null } } },
+            { $group: { _id: "$duplicateOf", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }, { $limit: 10 },
+        ]),
     ]);
-return successResponse(res, 200, "Advanced analytics retrieved", { trend: trend.map((row) => ({ date: row._id, count: row.count })), rootCauses: rootCauses.map((row) => ({ category: row._id, count: row.count })), majorIncidents, performance });
+    const values = kpiRows[0] || {};
+    const pct = (met, total) => total ? Number(((met / total) * 100).toFixed(1)) : null;
+    const hours = (ms) => ms == null ? null : Number((ms / 3600000).toFixed(2));
+return successResponse(res, 200, "Advanced analytics retrieved", { trend: trend.map((row) => ({ date: row._id, count: row.count })), rootCauses: rootCauses.map((row) => ({ category: row._id, count: row.count })), majorIncidents, performance, kpis: { mttaHours: hours(values.mttaMs), mttrHours: hours(values.mttrMs), acknowledgementSlaCompliance: pct(values.acknowledgementSlaMet, values.acknowledged), resolutionSlaCompliance: pct(values.resolutionSlaMet, values.resolved), reopenRate: pct(values.reopened, values.incidents), backlogAgeing, repeatIncidents } });
 });
 
 /**

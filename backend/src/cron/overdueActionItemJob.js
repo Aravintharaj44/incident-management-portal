@@ -106,7 +106,7 @@ const processOverdueActionItems = async () => {
  * standalone exported function so tests can exercise it directly.
  */
 const startOverdueActionItemJob = () => {
-    cron.schedule("* * * * *", async () => {
+    cron.schedule("*/20 * * * *", async () => {
         await processOverdueActionItems();
     });
 

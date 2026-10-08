@@ -39,10 +39,10 @@ router.get("/email-intake", async (req, res) => {
     res.status(200).json({ success: true });
 });
 
-// router.get("/zoho-sync", async (req, res) => {
-//     const zohoSyncJob = require("../cron/zohoSyncJob");
-//     await zohoSyncJob.runNow();
-//     res.status(200).json({ success: true });
-// });
+router.get("/zoho-sync", async (req, res) => {
+    const zohoSyncJob = require("../cron/zohoSyncJob");
+    await zohoSyncJob.runNow();   // ← calls runNow, not syncZohoData
+    res.status(200).json({ success: true });
+});
 
 module.exports = router;

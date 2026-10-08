@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
-const { ROLES, ROLE_VALUES } = require("../constants");
+const { ROLES, ROLE_VALUES,SUPPORT_AGENT_DESIGNATION_VALUES } = require("../constants");
 
 const SALT_ROUNDS = 10;
 
@@ -36,7 +36,13 @@ const userSchema = new mongoose.Schema(
             default: ROLES.USER,
             index: true,
         },
-
+        designation: {
+            type: String,
+            enum:SUPPORT_AGENT_DESIGNATION_VALUES,
+            trim: true,
+            maxlength: [100, "Designation cannot exceed 100 characters"],
+            default: null,
+        },
         isActive: {
             type: Boolean,
             default: true,
@@ -100,6 +106,7 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
         name: this.name,
         email: this.email,
         role: this.role,
+        designation: this.designation,
         isActive: this.isActive,
         authProvider: this.authProvider,
         lastLoginAt: this.lastLoginAt,

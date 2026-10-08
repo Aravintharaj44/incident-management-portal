@@ -46,6 +46,7 @@ const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const ForbiddenPage = lazy(() => import("./pages/ForbiddenPage"));
 const OnCallPage = lazy(() => import("./pages/admin/OnCallPage"));
 const SurveyPage = lazy(() => import("./pages/survey/SurveyPage"));
+const VulnerabilityCheckPage = lazy(() => import("./pages/VulnerabilityCheckPage"));
 
 const RouteFallback = () => (
     <div style={{ display: "grid", placeItems: "center", minHeight: 320 }}>
@@ -81,6 +82,7 @@ const App = () => (
 
                         <Route path="/profile" element={<ProfilePage />} />
                         <Route path="/api-docs" element={<ApiDocsPage />} />
+                        <Route path="/vulnerability-check" element={<VulnerabilityCheckPage />} />
                         <Route path="/forbidden" element={<ForbiddenPage />} />
 
                         {/* Staff only */}

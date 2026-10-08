@@ -26,18 +26,26 @@ export const ROLE_COLORS = {
 
 export const STATUS = {
     NEW: "new",
+    ASSIGNED: "assigned",
+    ACKNOWLEDGED: "acknowledged",
     IN_PROGRESS: "in_progress",
     ON_HOLD: "on_hold",
     RESOLVED: "resolved",
     CLOSED: "closed",
+    CANCELLED: "cancelled",
+    DUPLICATE: "duplicate",
 };
 
 export const STATUS_LABELS = {
     [STATUS.NEW]: "New",
+    [STATUS.ASSIGNED]: "Assigned",
+    [STATUS.ACKNOWLEDGED]: "Acknowledged",
     [STATUS.IN_PROGRESS]: "In Progress",
     [STATUS.ON_HOLD]: "On Hold",
     [STATUS.RESOLVED]: "Resolved",
     [STATUS.CLOSED]: "Closed",
+    [STATUS.CANCELLED]: "Cancelled",
+    [STATUS.DUPLICATE]: "Duplicate",
 };
 
 export const STATUS_COLORS = {
@@ -46,6 +54,8 @@ export const STATUS_COLORS = {
     [STATUS.ON_HOLD]: "orange",
     [STATUS.RESOLVED]: "green",
     [STATUS.CLOSED]: "default",
+    [STATUS.CANCELLED]: "default",
+    [STATUS.DUPLICATE]: "purple",
 };
 
 /** Hex values for the charts, which cannot use antd's named tag colours. */
@@ -55,15 +65,21 @@ export const STATUS_HEX = {
     [STATUS.ON_HOLD]: "#fa8c16",
     [STATUS.RESOLVED]: "#52c41a",
     [STATUS.CLOSED]: "#8c8c8c",
+    [STATUS.CANCELLED]: "#8c8c8c",
+    [STATUS.DUPLICATE]: "#722ed1",
 };
 
 /** Mirrors STATUS_TRANSITIONS on the server, to grey out impossible actions. */
 export const STATUS_TRANSITIONS = {
-    [STATUS.NEW]: [STATUS.IN_PROGRESS, STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CLOSED],
-    [STATUS.IN_PROGRESS]: [STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CLOSED],
-    [STATUS.ON_HOLD]: [STATUS.IN_PROGRESS, STATUS.RESOLVED, STATUS.CLOSED],
+    [STATUS.NEW]: [STATUS.ASSIGNED, STATUS.IN_PROGRESS, STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CLOSED, STATUS.CANCELLED, STATUS.DUPLICATE],
+    [STATUS.ASSIGNED]: [STATUS.ACKNOWLEDGED, STATUS.IN_PROGRESS, STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CANCELLED, STATUS.DUPLICATE],
+    [STATUS.ACKNOWLEDGED]: [STATUS.IN_PROGRESS, STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CANCELLED, STATUS.DUPLICATE],
+    [STATUS.IN_PROGRESS]: [STATUS.ON_HOLD, STATUS.RESOLVED, STATUS.CANCELLED, STATUS.DUPLICATE],
+    [STATUS.ON_HOLD]: [STATUS.ASSIGNED, STATUS.ACKNOWLEDGED, STATUS.IN_PROGRESS, STATUS.RESOLVED, STATUS.CANCELLED, STATUS.DUPLICATE],
     [STATUS.RESOLVED]: [STATUS.CLOSED, STATUS.IN_PROGRESS],
-    [STATUS.CLOSED]: [STATUS.IN_PROGRESS],
+    [STATUS.CLOSED]: [],
+    [STATUS.CANCELLED]: [],
+    [STATUS.DUPLICATE]: [],
 };
 
 export const TERMINAL_STATUSES = [STATUS.RESOLVED, STATUS.CLOSED];
@@ -76,10 +92,10 @@ export const PRIORITY = {
 };
 
 export const PRIORITY_LABELS = {
-    [PRIORITY.LOW]: "Low",
-    [PRIORITY.MEDIUM]: "Medium",
-    [PRIORITY.HIGH]: "High",
-    [PRIORITY.CRITICAL]: "Critical",
+    [PRIORITY.LOW]: "P4 - Low",
+    [PRIORITY.MEDIUM]: "P3 - Medium",
+    [PRIORITY.HIGH]: "P2 - High",
+    [PRIORITY.CRITICAL]: "P1 - Critical",
 };
 
 export const PRIORITY_COLORS = {

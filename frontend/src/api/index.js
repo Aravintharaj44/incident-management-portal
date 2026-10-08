@@ -16,3 +16,4 @@ export { surveyApi,csatDashboardApi } from "./surveys";
 export { oauthClientsApi } from "./oauthClients";
 export { default as client } from "./client";
 export { intakeApi } from "./intake";
+export { vulnerabilityApi } from "./vulnerabilities";

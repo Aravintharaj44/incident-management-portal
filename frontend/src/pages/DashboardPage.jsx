@@ -15,6 +15,8 @@ import {
     Tabs,
     Tag,
     Typography,
+    Divider,
+    Progress 
 } from "antd";
 import {
     AlertOutlined,
@@ -27,10 +29,21 @@ import {
     DownloadOutlined,
     PrinterOutlined,
     StarOutlined,
+    ThunderboltOutlined,
+    TeamOutlined,
+    SafetyCertificateOutlined,
+    RollbackOutlined,
+    ReloadOutlined,
+    BarChartOutlined,
+    CopyOutlined,
+    DatabaseOutlined,
+    FieldTimeOutlined,
+    FileSearchOutlined,
+
 } from "@ant-design/icons";
 import html2canvas from "html2canvas";
 import dayjs from "dayjs";
-import { categoryApi, dashboardApi, actionItemDashboardApi,csatDashboardApi } from "../api";
+import { categoryApi, dashboardApi, actionItemDashboardApi, csatDashboardApi } from "../api";
 import { useAuth } from "../hooks/useAuth";
 import PageHeader from "../components/common/PageHeader";
 import StatCard from "../components/dashboard/StatCard";
@@ -384,13 +397,356 @@ const DashboardPage = () => {
                 </Col>
             </Row>
 
-            <Card title="Advanced analytics" style={{ marginTop: 16 }} extra={<Space wrap><RangePicker value={analyticsFilters.dateFrom ? [dayjs(analyticsFilters.dateFrom), analyticsFilters.dateTo ? dayjs(analyticsFilters.dateTo) : null] : null} onChange={(range) => setAnalyticsFilters((value) => ({ ...value, dateFrom: range?.[0]?.startOf("day").toISOString(), dateTo: range?.[1]?.endOf("day").toISOString() }))} /><Select allowClear value={analyticsFilters.category} placeholder="Category" style={{ width: 160 }} options={analyticsCategories.map((category) => ({ value: category._id, label: category.name }))} onChange={(category) => setAnalyticsFilters((value) => ({ ...value, category }))} /><Select allowClear value={analyticsFilters.priority} placeholder="Priority" style={{ width: 130 }} options={["low", "medium", "high", "critical"].map((value) => ({ value, label: value }))} onChange={(priority) => setAnalyticsFilters((value) => ({ ...value, priority }))} /><Button onClick={() => setAnalyticsFilters({})}>Clear</Button></Space>}>
+            {/* <Card title="Advanced analytics" style={{ marginTop: 16 }} extra={<Space wrap><RangePicker value={analyticsFilters.dateFrom ? [dayjs(analyticsFilters.dateFrom), analyticsFilters.dateTo ? dayjs(analyticsFilters.dateTo) : null] : null} onChange={(range) => setAnalyticsFilters((value) => ({ ...value, dateFrom: range?.[0]?.startOf("day").toISOString(), dateTo: range?.[1]?.endOf("day").toISOString() }))} /><Select allowClear value={analyticsFilters.category} placeholder="Category" style={{ width: 160 }} options={analyticsCategories.map((category) => ({ value: category._id, label: category.name }))} onChange={(category) => setAnalyticsFilters((value) => ({ ...value, category }))} /><Select allowClear value={analyticsFilters.priority} placeholder="Priority" style={{ width: 130 }} options={["low", "medium", "high", "critical"].map((value) => ({ value, label: value }))} onChange={(priority) => setAnalyticsFilters((value) => ({ ...value, priority }))} /><Button onClick={() => setAnalyticsFilters({})}>Clear</Button></Space>}>
                 <Row gutter={[16, 16]}>
                     <Col xs={24} lg={8}><Text strong>Top approved root causes</Text><Table size="small" pagination={false} rowKey="category" dataSource={advanced?.rootCauses || []} columns={[{ title: "Category", dataIndex: "category" }, { title: "Approved RCAs", dataIndex: "count" }]} /></Col>
                     <Col xs={24} lg={8}><Text strong>Active major incidents</Text><Table size="small" pagination={false} rowKey="incidentId" dataSource={advanced?.majorIncidents || []} onRow={(record) => ({ onClick: () => navigate(`/incidents/${record.incidentId}`), style: { cursor: "pointer" } })} columns={[{ title: "Incident", dataIndex: "incidentNumber" }, { title: "Children", dataIndex: "childCount" }, { title: "Status", dataIndex: "status" }]} /></Col>
                     <Col xs={24} lg={8}><Text strong>Agent performance</Text><Table size="small" pagination={false} rowKey="agentId" dataSource={advanced?.performance || []} columns={[{ title: "Agent", dataIndex: "name" }, { title: "Avg hrs", dataIndex: "averageHours" }, { title: "SLA %", dataIndex: "slaCompliance" }]} /></Col>
                 </Row>
+            </Card> */}
+
+            <Card
+                style={{ marginTop: 16, borderRadius: 12, overflow: "hidden" }}
+                styles={{
+                }}
+                title={
+                    <Space size={8}>
+                        <BarChartOutlined style={{ color: "#1677ff" }} />
+                        <Text strong style={{ fontSize: 16 }}>Advanced Analytics</Text>
+                        <Tag color="blue" style={{ marginLeft: 4 }}>
+                            {trendDays}d view
+                        </Tag>
+                    </Space>
+                }
+                extra={
+                    <Space wrap>
+                        <RangePicker
+                            value={
+                                analyticsFilters.dateFrom
+                                    ? [
+                                        dayjs(analyticsFilters.dateFrom),
+                                        analyticsFilters.dateTo ? dayjs(analyticsFilters.dateTo) : null,
+                                    ]
+                                    : null
+                            }
+                            onChange={(range) =>
+                                setAnalyticsFilters((value) => ({
+                                    ...value,
+                                    dateFrom: range?.[0]?.startOf("day").toISOString(),
+                                    dateTo: range?.[1]?.endOf("day").toISOString(),
+                                }))
+                            }
+                        />
+                        <Select
+                            allowClear
+                            value={analyticsFilters.category}
+                            placeholder="Category"
+                            style={{ width: 160 }}
+                            options={analyticsCategories.map((category) => ({
+                                value: category._id,
+                                label: category.name,
+                            }))}
+                            onChange={(category) => setAnalyticsFilters((value) => ({ ...value, category }))}
+                        />
+                        <Select
+                            allowClear
+                            value={analyticsFilters.priority}
+                            placeholder="Priority"
+                            style={{ width: 130 }}
+                            options={["low", "medium", "high", "critical"].map((value) => ({ value, label: value }))}
+                            onChange={(priority) => setAnalyticsFilters((value) => ({ ...value, priority }))}
+                        />
+                        <Button icon={<ReloadOutlined />} onClick={() => setAnalyticsFilters({})}>
+                            Reset
+                        </Button>
+                    </Space>
+                }
+            >
+                {/* -------------------- KPI STRIP -------------------- */}
+                <Row gutter={[12, 12]}>
+                    {[
+                        {
+                            label: "MTTA",
+                            sub: "Mean Time to Acknowledge",
+                            value: advanced?.kpis?.mttaHours,
+                            format: (v) => `${Number(v).toFixed(2)} hrs`,
+                            icon: <ClockCircleOutlined />,
+                            color: "#1677ff",
+                            bg: "#e6f4ff",
+                        },
+                        {
+                            label: "MTTR",
+                            sub: "Mean Time to Resolve",
+                            value: advanced?.kpis?.mttrHours,
+                            format: (v) => `${Number(v).toFixed(2)} hrs`,
+                            icon: <FieldTimeOutlined />,
+                            color: "#722ed1",
+                            bg: "#f9f0ff",
+                        },
+                        {
+                            label: "SLA Compliance",
+                            sub: "Resolution SLA",
+                            value: advanced?.kpis?.resolutionSlaCompliance,
+                            format: (v) => `${Number(v).toFixed(1)}%`,
+                            extra: advanced?.kpis?.acknowledgementSlaCompliance != null
+                                ? `Ack SLA: ${Number(advanced.kpis.acknowledgementSlaCompliance).toFixed(1)}%`
+                                : null,
+                            icon: <SafetyCertificateOutlined />,
+                            color: "#52c41a",
+                            bg: "#f6ffed",
+                        },
+                        {
+                            label: "Reopen Rate",
+                            sub: "Incidents reopened",
+                            value: advanced?.kpis?.reopenRate,
+                            format: (v) => `${Number(v).toFixed(1)}%`,
+                            icon: <RollbackOutlined />,
+                            color: "#faad14",
+                            bg: "#fffbe6",
+                        },
+                        {
+                            label: "Repeat Incidents",
+                            sub: "Duplicate / repeat",
+                            value: advanced?.kpis?.repeatIncidents
+                                ? advanced.kpis.repeatIncidents.reduce((t, i) => t + Number(i.count || 0), 0)
+                                : 0,
+                            format: (v) => v,
+                            icon: <CopyOutlined />,
+                            color: "#13c2c2",
+                            bg: "#e6fffb",
+                        },
+                        {
+                            label: "Backlog Ageing",
+                            sub: "Open tickets by age",
+                            custom: true,
+                            icon: <DatabaseOutlined />,
+                            color: "#ff4d4f",
+                            bg: "#fff2f0",
+                        },
+                    ].map((kpi) => (
+                        <Col xs={12} sm={8} md={8} xl={4} key={kpi.label}>
+                            <Card
+                                size="small"
+                                variant="outlined"
+                                styles={{
+                                    body: { padding: "14px 16px" },
+                                }}
+                                style={{
+                                    borderRadius: 10,
+                                    borderLeft: `4px solid ${kpi.color}`,
+                                    height: "100%",
+                                    background: kpi.bg,
+                                    transition: "box-shadow 0.2s ease",
+                                }}
+                                hoverable
+                            >
+                                <Space size={8} style={{ marginBottom: 4 }}>
+                                    <span style={{ color: kpi.color, fontSize: 15 }}>{kpi.icon}</span>
+                                    <Text type="secondary" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                                        {kpi.label}
+                                    </Text>
+                                </Space>
+
+                                {kpi.custom ? (
+                                    /* ---- Backlog ageing mini-bars ---- */
+                                    <div style={{ marginTop: 4 }}>
+                                        {(advanced?.kpis?.backlogAgeing || []).length ? (
+                                            advanced.kpis.backlogAgeing.map((bucket) => {
+                                                const labels = { 0: "0–1d", 1: "1–3d", 3: "3–7d", 7: "7–30d", 30: "30+d" };
+                                                const max = Math.max(
+                                                    ...advanced.kpis.backlogAgeing.map((b) => b.count), 1
+                                                );
+                                                return (
+                                                    <div key={bucket._id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                                                        <Text type="secondary" style={{ fontSize: 11, width: 38 }}>
+                                                            {labels[bucket._id] || `${bucket._id}+d`}
+                                                        </Text>
+                                                        <div
+                                                            style={{
+                                                                flex: 1,
+                                                                height: 6,
+                                                                borderRadius: 3,
+                                                                background: "#f0f0f0",
+                                                                overflow: "hidden",
+                                                            }}
+                                                        >
+                                                            <div
+                                                                style={{
+                                                                    width: `${(bucket.count / max) * 100}%`,
+                                                                    height: "100%",
+                                                                    background: kpi.color,
+                                                                    borderRadius: 3,
+                                                                    transition: "width 0.4s ease",
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <Text strong style={{ fontSize: 11, width: 24, textAlign: "right" }}>
+                                                            {bucket.count}
+                                                        </Text>
+                                                    </div>
+                                                );
+                                            })
+                                        ) : (
+                                            <Text type="secondary">No open backlog</Text>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <Title level={3} style={{ margin: "2px 0 0", color: kpi.color, fontSize: 24 }}>
+                                            {kpi.value != null ? kpi.format(kpi.value) : "—"}
+                                        </Title>
+                                        <Text type="secondary" style={{ fontSize: 11 }}>
+                                            {kpi.sub}
+                                        </Text>
+                                        {kpi.extra && (
+                                            <div style={{ marginTop: 4 }}>
+                                                <Tag style={{ fontSize: 10, marginRight: 0 }} color="green">
+                                                    {kpi.extra}
+                                                </Tag>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </Card>
+                        </Col>
+                    ))}
+                </Row>
+
+                <Divider style={{ margin: "20px 0 16px" }} plain>
+                    <Text type="secondary" style={{ fontSize: 12, letterSpacing: 1 }}>
+                        DETAIL BREAKDOWN
+                    </Text>
+                </Divider>
+
+                {/* -------------------- DETAIL TABLES -------------------- */}
+                <Row gutter={[16, 16]}>
+                    <Col xs={24} lg={8}>
+                        <Card
+                            size="small"
+                            title={
+                                <Space size={6}>
+                                    <FileSearchOutlined style={{ color: "#1677ff" }} />
+                                    <Text strong style={{ fontSize: 13 }}>Top Approved Root Causes</Text>
+                                </Space>
+                            }
+                            style={{ borderRadius: 10 }}
+                        >
+                            <Table
+                                size="small"
+                                pagination={false}
+                                rowKey="category"
+                                dataSource={advanced?.rootCauses || []}
+                                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No approved RCAs yet" /> }}
+                                columns={[
+                                    {
+                                        title: "Category",
+                                        dataIndex: "category",
+                                        render: (text) => (
+                                            <Tag color="geekblue" style={{ marginRight: 0 }}>{text}</Tag>
+                                        ),
+                                    },
+                                    {
+                                        title: "Approved RCAs",
+                                        dataIndex: "count",
+                                        width: 130,
+                                        align: "right",
+                                        render: (value) => <Text strong>{value}</Text>,
+                                    },
+                                ]}
+                            />
+                        </Card>
+                    </Col>
+
+                    <Col xs={24} lg={8}>
+                        <Card
+                            size="small"
+                            title={
+                                <Space size={6}>
+                                    <ThunderboltOutlined style={{ color: "#fa8c16" }} />
+                                    <Text strong style={{ fontSize: 13 }}>Active Major Incidents</Text>
+                                </Space>
+                            }
+                            style={{ borderRadius: 10 }}
+                        >
+                            <Table
+                                size="small"
+                                pagination={false}
+                                rowKey="incidentId"
+                                dataSource={advanced?.majorIncidents || []}
+                                onRow={(record) => ({
+                                    onClick: () => navigate(`/incidents/${record.incidentId}`),
+                                    style: { cursor: "pointer" },
+                                })}
+                                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No active major incidents" /> }}
+                                columns={[
+                                    { title: "Incident", dataIndex: "incidentNumber" },
+                                    {
+                                        title: "Children",
+                                        dataIndex: "childCount",
+                                        width: 90,
+                                        align: "right",
+                                        render: (value) => <Tag color="orange">{value}</Tag>,
+                                    },
+                                    {
+                                        title: "Status",
+                                        dataIndex: "status",
+                                        width: 110,
+                                        render: (status) => <StatusTag status={status} />,
+                                    },
+                                ]}
+                            />
+                        </Card>
+                    </Col>
+
+                    <Col xs={24} lg={8}>
+                        <Card
+                            size="small"
+                            title={
+                                <Space size={6}>
+                                    <TeamOutlined style={{ color: "#52c41a" }} />
+                                    <Text strong style={{ fontSize: 13 }}>Agent Performance</Text>
+                                </Space>
+                            }
+                            style={{ borderRadius: 10 }}
+                        >
+                            <Table
+                                size="small"
+                                pagination={false}
+                                rowKey="agentId"
+                                dataSource={advanced?.performance || []}
+                                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No performance data" /> }}
+                                columns={[
+                                    { title: "Agent", dataIndex: "name" },
+                                    {
+                                        title: "Avg hrs",
+                                        dataIndex: "averageHours",
+                                        width: 100,
+                                        align: "right",
+                                        render: (value) => (
+                                            <Text type={value > 48 ? "danger" : undefined}>{value}</Text>
+                                        ),
+                                    },
+                                    {
+                                        title: "SLA %",
+                                        dataIndex: "slaCompliance",
+                                        width: 110,
+                                        render: (value) => (
+                                            <Progress
+                                                percent={Number(value)}
+                                                size="small"
+                                                strokeColor={value >= 90 ? "#52c41a" : value >= 70 ? "#faad14" : "#ff4d4f"}
+                                                format={(v) => `${v}%`}
+                                            />
+                                        ),
+                                    },
+                                ]}
+                            />
+                        </Card>
+                    </Col>
+                </Row>
             </Card>
+
+
             {/* --- Charts --------------------------------------------------- */}
             <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
                 <Col xs={24} lg={8}>
@@ -708,7 +1064,7 @@ const DashboardPage = () => {
                                             ) > 0
                                                 ? Math.round(
                                                     ((csatSummary.overall.avgRating >= 4 ? 1 : 0.5) *
-                                                    csatSummary.overall.responseCount) /
+                                                        csatSummary.overall.responseCount) /
                                                     csatSummary.overall.responseCount * 100
                                                 )
                                                 : 0

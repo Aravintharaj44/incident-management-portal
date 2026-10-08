@@ -18,3 +18,6 @@ Thumbs.db
 .env.example
 src/test/
 coverage/
+
+!src/test/
+!src/test/ChatbotAssistant.test.jsx

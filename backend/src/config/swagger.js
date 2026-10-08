@@ -8,7 +8,7 @@ const options = {
             title: "Incident Management Portal API",
             version: "1.0.0",
             description: `
-REST API for the Incident Management Portal (MERN training project).
+REST API for the Incident Management Portal.
 
 Every endpoint (except \`/api/health\` and the two public authentication
 routes) responds with the same envelope:
@@ -503,15 +503,21 @@ reset. Portal JWT requests are not subject to this rate limit.
                         title: { type: "string", minLength: 5, maxLength: 140, example: "Shared printer is offline" },
                         description: { type: "string", minLength: 10, maxLength: 5000, example: "The printer on floor 3 is not responding to print jobs." },
                         category: { type: "string", description: "Category id (populated in responses).", example: "64b8f0c2e4a9d1f2a3b4c5d7" },
-                        priority: { type: "string", enum: ["low", "medium", "high", "critical"], example: "medium" },
+                        priority: { type: "string", enum: ["low", "medium", "high", "critical"], description: "Calculated priority: P4/P3/P2/P1 respectively.", example: "medium" },
                         priorityWeight: { type: "integer", example: 2 },
-                        status: { type: "string", enum: ["new", "in_progress", "on_hold", "resolved", "closed"], example: "new" },
+                        impact: { type: "string", enum: ["low", "medium", "high"], nullable: true, description: "Impact used to calculate priority; null on legacy incidents." },
+                        urgency: { type: "string", enum: ["low", "medium", "high"], nullable: true, description: "Urgency used to calculate priority; null on legacy incidents." },
+                        status: { type: "string", enum: ["new", "assigned", "acknowledged", "in_progress", "on_hold", "resolved", "closed", "cancelled", "duplicate"], example: "new" },
                         reportedBy: { type: "string", description: "User id (populated in responses)." },
                         assignedDepartment: { type: "string", nullable: true, description: "Department id." },
                         assignedTo: { type: "string", nullable: true, description: "User id (populated in responses)." },
                         department: { type: "string", nullable: true, description: "Triage department id (populated in responses)." },
                         problemId: { type: "string", nullable: true, description: "Problem id (populated with problemNumber/title/status in detail). Set when this incident is grouped under a Problem (FR4-04)." },
                         dueBy: { type: "string", format: "date-time", nullable: true },
+                        acknowledgementDueBy: { type: "string", format: "date-time", nullable: true, description: "Acknowledgement SLA deadline." },
+                        acknowledgedAt: { type: "string", format: "date-time", nullable: true },
+                        acknowledgementSlaState: { type: "string", enum: ["met", "breached", "on_track", "on_hold", "none"], description: "Computed acknowledgement SLA state." },
+                        onHoldReason: { type: "string", nullable: true, maxLength: 500 },
                         overdueNotifiedAt: { type: "string", format: "date-time", nullable: true },
                         resolvedAt: { type: "string", format: "date-time", nullable: true },
                         closedAt: { type: "string", format: "date-time", nullable: true },
@@ -519,6 +525,15 @@ reset. Portal JWT requests are not subject to this rate limit.
                         commentCount: { type: "integer", example: 0 },
                         attachmentCount: { type: "integer", example: 0 },
                         isMajorIncident: { type: "boolean", example: false },
+                        majorIncidentDeclaredAt: { type: "string", format: "date-time", nullable: true },
+                        majorIncidentDeclaredBy: { type: "string", nullable: true, description: "User id of the declarer." },
+                        majorIncidentReason: { type: "string", maxLength: 2000 },
+                        incidentManager: { type: "string", nullable: true, description: "User id of the Major Incident lead." },
+                        majorIncidentBridge: { type: "string", maxLength: 500 },
+                        majorIncidentUpdateCadenceMinutes: { type: "integer", nullable: true, minimum: 1 },
+                        pirSummary: { type: "string", maxLength: 5000 },
+                        pirCompletedAt: { type: "string", format: "date-time", nullable: true },
+                        duplicateOf: { type: "string", nullable: true, description: "Original incident id when status is duplicate." },
                         isOverdue: { type: "boolean", description: "Computed virtual; true when unresolved past the SLA deadline.", example: false },
                         hoursToDue: { type: "integer", nullable: true, description: "Computed virtual; whole hours to the SLA deadline." },
                         slaState: { type: "string", nullable: true, description: "Computed SLA state (e.g. on_track / at_risk / breached)." },
@@ -534,7 +549,9 @@ reset. Portal JWT requests are not subject to this rate limit.
                         title: { type: "string", minLength: 5, maxLength: 140, example: "Shared printer is offline" },
                         description: { type: "string", minLength: 10, maxLength: 5000, example: "The printer on floor 3 is not responding to print jobs." },
                         category: { type: "string", description: "An active category id.", example: "64b8f0c2e4a9d1f2a3b4c5d7" },
-                        priority: { type: "string", enum: ["low", "medium", "high", "critical"], description: "Optional; defaults to `medium`.", example: "medium" },
+                        impact: { type: "string", enum: ["low", "medium", "high"], description: "Required with urgency for priority calculation.", example: "medium" },
+                        urgency: { type: "string", enum: ["low", "medium", "high"], description: "Required with impact for priority calculation.", example: "medium" },
+                        priority: { type: "string", enum: ["low", "medium", "high", "critical"], description: "Legacy compatibility only. New clients should provide impact and urgency.", example: "medium" },
                     },
                 },
                 IncidentUpdateRequest: {
@@ -544,7 +561,8 @@ reset. Portal JWT requests are not subject to this rate limit.
                         title: { type: "string", minLength: 5, maxLength: 140, example: "Shared printer is offline (updated)" },
                         description: { type: "string", minLength: 10, maxLength: 5000, example: "Updated description." },
                         category: { type: "string", description: "An active category id." },
-                        priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                        impact: { type: "string", enum: ["low", "medium", "high"] },
+                        urgency: { type: "string", enum: ["low", "medium", "high"] },
                     },
                 },
                 UpdateStatusRequest: {
@@ -553,7 +571,7 @@ reset. Portal JWT requests are not subject to this rate limit.
                     properties: {
                         status: {
                             type: "string",
-                            enum: ["new", "in_progress", "on_hold", "resolved", "closed"],
+                            enum: ["new", "assigned", "acknowledged", "in_progress", "on_hold", "resolved", "closed", "cancelled", "duplicate"],
                             description: "Legal transitions are enforced by the workflow rules.",
                             example: "resolved",
                         },
@@ -568,6 +586,19 @@ reset. Portal JWT requests are not subject to this rate limit.
                             description: "Whether linked Child-Of incidents follow this status change.",
                             example: true,
                         },
+                        onHoldReason: { type: "string", minLength: 2, maxLength: 500, description: "Required when moving to `on_hold` (for example, Awaiting Customer or Awaiting Vendor)." },
+                        duplicateOf: { type: "string", description: "Required when moving to `duplicate`; id of the original incident." },
+                    },
+                },
+                MajorIncidentDeclareRequest: {
+                    type: "object",
+                    required: ["reason"],
+                    description: "Declares or updates the operational coordination record for a P1/Critical incident.",
+                    properties: {
+                        reason: { type: "string", minLength: 1, maxLength: 2000, example: "Core payment service is unavailable." },
+                        incidentManager: { type: "string", description: "Optional staff user id; defaults to the declaring user." },
+                        bridge: { type: "string", maxLength: 500, description: "Optional bridge, channel, or conference reference." },
+                        updateCadenceMinutes: { type: "integer", minimum: 1, description: "Optional stakeholder-update cadence in minutes.", example: 30 },
                     },
                 },
                 AssignRequest: {
@@ -1433,8 +1464,115 @@ WebhookDelivery: {
             { name: "Intake", description: "Manual review queue for email/webhook payloads that failed automatic ingestion (FR4-20)." },
             { name: "Teams", description: "Read-only Teams/Departments API (FR5-06) for external clients to resolve team and category structure." },
             { name: "Agents", description: "Agents API (FR5-05) for external clients to list and inspect support agents." },
+            { name: "Vulnerabilities", description: "AI-assisted vulnerability alert classification." },
         ],
         paths: {
+            // ==================================================================
+            // Vulnerabilities
+            // ==================================================================
+            "/vulnerabilities/analyze": {
+                post: {
+                    tags: ["Vulnerabilities"],
+                    summary: "Analyze a vulnerability alert",
+                    description: "Classifies a vulnerability alert with the backend AI service. This route currently has no route-level authentication middleware; it is still subject to the API-wide rate limiter.",
+                    security: [],
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    required: ["vulnerability"],
+                                    properties: {
+                                        vulnerability: {
+                                            type: "string",
+                                            minLength: 1,
+                                            description: "Non-empty vulnerability alert or description.",
+                                            example: "A vulnerability alert describing the affected application or system...",
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    responses: {
+                        200: {
+                            description: "Vulnerability analysis completed.",
+                            content: {
+                                "application/json": {
+                                    schema: {
+                                        type: "object",
+                                        required: ["success", "message", "data"],
+                                        properties: {
+                                            success: { type: "boolean", example: true },
+                                            message: { type: "string", example: "Successfully retrived" },
+                                            data: {
+                                                type: "object",
+                                                required: ["result"],
+                                                properties: {
+                                                    result: {
+                                                        type: "object",
+                                                        required: ["success", "data", "validation_warnings", "model", "usage"],
+                                                        properties: {
+                                                            success: { type: "boolean", description: "Whether the AI classification passed backend validation." },
+                                                            data: {
+                                                                type: "object",
+                                                                required: ["os_or_application", "vulnerability_type", "vulnerability_category", "summary", "affected_component", "attack_vector", "severity", "confidence", "remediation", "reasoning"],
+                                                                properties: {
+                                                                    os_or_application: { type: "string", enum: ["Operating System", "Application", "Both", "Unknown"] },
+                                                                    vulnerability_type: { type: "string", enum: ["Application", "Network", "Operating System", "Database", "Web", "Authentication", "Configuration", "Cryptographic", "Hardware", "Other"] },
+                                                                    vulnerability_category: { type: "string", enum: ["Information Disclosure", "Authentication Bypass", "Privilege Escalation", "Remote Code Execution", "Denial of Service", "Misconfiguration", "Unsupported Software", "Security Control Failure", "Other"] },
+                                                                    summary: { type: "string" },
+                                                                    affected_component: { type: "string" },
+                                                                    attack_vector: { type: "string", enum: ["Local", "Network", "Physical", "Adjacent Network", "Unknown"] },
+                                                                    severity: { type: "string", enum: ["Critical", "High", "Medium", "Low", "Informational", "Unknown"] },
+                                                                    confidence: { type: "integer", minimum: 0, maximum: 100 },
+                                                                    remediation: { type: "string" },
+                                                                    reasoning: { type: "string" },
+                                                                },
+                                                            },
+                                                            validation_warnings: { type: "array", items: { type: "string" }, description: "Backend validation findings for the AI classification." },
+                                                            model: { type: "string", nullable: true },
+                                                            usage: { type: "object", nullable: true, additionalProperties: true },
+                                                        },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                    example: {
+                                        success: true,
+                                        message: "Successfully retrived",
+                                        data: {
+                                            result: {
+                                                success: true,
+                                                data: {
+                                                    os_or_application: "Application",
+                                                    vulnerability_type: "Web",
+                                                    vulnerability_category: "Information Disclosure",
+                                                    summary: "The alert indicates that sensitive information may be exposed by the affected application.",
+                                                    affected_component: "Affected web application",
+                                                    attack_vector: "Network",
+                                                    severity: "Medium",
+                                                    confidence: 82,
+                                                    remediation: "Review the affected application's configuration and apply the appropriate security remediation based on the available alert information.",
+                                                    reasoning: "The classification is based on the information disclosure behavior described in the alert.",
+                                                },
+                                                validation_warnings: [],
+                                                model: "configured-model",
+                                                usage: null,
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        409: { description: "Analysis failed. The controller maps validation and AI-service failures to HTTP 409.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        429: { description: "API-wide rate limit exceeded.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        500: { description: "Unexpected server error.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
             // ==================================================================
             // Auth
             // ==================================================================
@@ -1928,6 +2066,23 @@ WebhookDelivery: {
                         403: { description: "You cannot change the status of work assigned to someone else.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Incident not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         422: { description: "Validation failed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+            "/incidents/{id}/major-incident": {
+                post: {
+                    tags: ["Incidents"],
+                    summary: "Declare a P1 Major Incident",
+                    description: "Requires authentication and a support-staff role. Only a P1/Critical incident can be declared a Major Incident. Records the declaration, coordinator, optional bridge, and update cadence in the incident and its activity trail.",
+                    parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "P1 incident id (Mongo ObjectId)." }],
+                    requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/MajorIncidentDeclareRequest" } } } },
+                    responses: {
+                        200: { description: "Major Incident declared or updated.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean", example: true }, message: { type: "string", example: "Major incident declared" }, data: { type: "object", properties: { incident: { $ref: "#/components/schemas/Incident" } } } } } } } },
+                        400: { description: "The incident is not P1/Critical, or a reason was not supplied.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        403: { description: "Requires an admin or support_agent role.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Incident not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        422: { description: "Invalid incident id.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
                 },
             },

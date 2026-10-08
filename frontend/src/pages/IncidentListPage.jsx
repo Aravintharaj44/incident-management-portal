@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { App, Button, Card, Space, Table, Tooltip, Typography } from "antd";
+import { App, Button, Card, Space, Table, Tag, Tooltip, Typography } from "antd";
 import {
     DownloadOutlined,
     PlusOutlined,
@@ -15,6 +15,7 @@ import UserBadge from "../components/common/UserBadge";
 import { ErrorView } from "../components/common/StateViews";
 import { formatDateTime, fromNow, truncate } from "../utils/format";
 import SourceTag from "../components/incidents/SourceTag";  
+import { PRIORITY_LABELS, STATUS_LABELS } from "../utils/constants";
 const { Text } = Typography;
 
 /** Filters that are lists in the API and arrays in component state. */
@@ -77,6 +78,21 @@ const IncidentListPage = ({ fixedFilters = EMPTY_FIXED_FILTERS, pageTitle = "Inc
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
     const [error, setError] = useState(null);
+
+    const filterSummary = useMemo(() => {
+        const labels = [];
+        if (filters.overdue) labels.push("Overdue incidents");
+        if (filters.open) labels.push("Open incidents");
+        if (filters.status?.length) labels.push(filters.status.map((status) => STATUS_LABELS[status] || status).join(", "));
+        if (filters.priority?.length) labels.push(filters.priority.map((priority) => PRIORITY_LABELS[priority] || priority).join(", "));
+        if (filters.search) labels.push(`Search: “${filters.search}”`);
+        if (filters.assignedTo) labels.push(filters.assignedTo === "me" ? "Assigned to me" : filters.assignedTo === "unassigned" ? "Unassigned" : "Assignee filtered");
+        if (filters.category?.length) labels.push("Category filtered");
+        if (filters.dateFrom || filters.dateTo) labels.push("Date range applied");
+        return labels;
+    }, [filters]);
+    const hasFilters = filterSummary.length > 0;
+    const listTitle = hasFilters ? `${pageTitle} · Filtered` : pageTitle;
 
     // Reference data for the filter dropdowns - loaded once.
     useEffect(() => {
@@ -179,11 +195,14 @@ const IncidentListPage = ({ fixedFilters = EMPTY_FIXED_FILTERS, pageTitle = "Inc
         {
             title: "Title",
             dataIndex: "title",
+            width: 400,
             sorter: true,
             render: (title, record) => (
                 <Link to={`/incidents/${record._id}`}>
-                    <div style={{ fontWeight: 500 }}>{truncate(title, 70)}</div>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
+                    <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={title}>
+                        {truncate(title, 90)}
+                    </div>
+                    <Text type="secondary" style={{ display: "block", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {record.category?.name} - raised {fromNow(record.createdAt)}
                     </Text>
                 </Link>
@@ -255,11 +274,13 @@ const IncidentListPage = ({ fixedFilters = EMPTY_FIXED_FILTERS, pageTitle = "Inc
     return (
         <>
             <PageHeader
-                title={pageTitle}
+                title={listTitle}
                 subtitle={
-                    isStaff
-                        ? "Every incident you have visibility of."
-                        : "The incidents you have raised."
+                    hasFilters
+                        ? `Showing ${filterSummary.join(" · ")}.`
+                        : isStaff
+                          ? "Every incident you have visibility of."
+                          : "The incidents you have raised."
                 }
                 extra={[
                     <Button
@@ -300,14 +321,24 @@ const IncidentListPage = ({ fixedFilters = EMPTY_FIXED_FILTERS, pageTitle = "Inc
                 loading={loading}
             />
 
-            <Card styles={{ body: { padding: 0 } }}>
+            <Card
+                title={
+                    <Space size={10} wrap>
+                        <Text strong style={{ fontSize: 16 }}>Incident register</Text>
+                        {hasFilters && <Tag color="blue">{filterSummary.length} active filter{filterSummary.length === 1 ? "" : "s"}</Tag>}
+                        {!loading && <Text type="secondary" style={{ fontSize: 13 }}>{pagination.total} result{pagination.total === 1 ? "" : "s"}</Text>}
+                    </Space>
+                }
+                styles={{ body: { padding: 0 }, header: { minHeight: 56, padding: "0 20px" } }}
+            >
                 <Table
                     rowKey="_id"
                     columns={columns}
                     dataSource={incidents}
                     loading={loading}
                     onChange={handleTableChange}
-                    scroll={{ x: 1000 }}
+                    tableLayout="fixed"
+                    scroll={{ x: 1480 }}
                     // Overdue rows are tinted so they stand out while scanning.
                     rowClassName={(record) => (record.isOverdue ? "row-overdue" : "")}
                     locale={{
