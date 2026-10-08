@@ -12,6 +12,9 @@ const {
     sendIncidentOverdue,
 } = require("../services/emailService");
 
+const { pushIncidentEvent } = require("../services/notificationService");
+const { PUSH_EVENTS } = require("../services/pushNotificationService");
+
 const logger = require("../utils/logger");
 
 /**
@@ -88,6 +91,16 @@ const processOverdueIncidents = async () => {
                     );
                 }
             }
+
+            // Best-effort web push alongside the email pass (push-only - this
+            // job historically had no in-app hook). Never throws.
+            await pushIncidentEvent({
+                recipients: recipients.map((recipient) => recipient._id),
+                incident,
+                type: PUSH_EVENTS.INCIDENT_OVERDUE,
+                title: `${incident.incidentNumber} is overdue`,
+                body: incident.title,
+            });
 
             // Only mark as notified if all emails were successfully sent
             if (allEmailsSent) {

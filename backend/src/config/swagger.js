@@ -1456,7 +1456,7 @@ WebhookDelivery: {
             { name: "Comments", description: "Comment editing/deletion." },
             { name: "Attachments", description: "Attachment download and deletion." },
             { name: "Dashboard", description: "Aggregations and analytics." },
-            { name: "Notifications", description: "In-app notifications." },
+            { name: "Notifications", description: "In-app notifications and browser push (FCM) token management." },
             { name: "Meta", description: "Health and reference data." },
             { name: "OnCall", description: "On-call roster scheduling, escalation chains and incident acknowledgement (FR4-21..25)." },
             { name: "Webhooks", description: "Inbound monitoring-alert webhook intake (FR4-17). Verified by HMAC signature, not a bearer token." },
@@ -2982,6 +2982,74 @@ WebhookDelivery: {
                         200: { description: "Notification removed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponse" } } } },
                         401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                         404: { description: "Notification not found.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+            },
+
+            "/notifications/push/register": {
+                post: {
+                    tags: ["Notifications"],
+                    summary: "Register a browser push (FCM) token",
+                    description:
+                        "Requires authentication. Stores the caller's Firebase Cloud Messaging token for web push notifications. " +
+                        "The owner is always taken from the authenticated user - `userId` is never accepted from the client. " +
+                        "Re-registering an existing token refreshes `lastSeenAt`; if the same device token was previously owned by another account it is transferred to the caller.",
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    required: ["token"],
+                                    properties: {
+                                        token: { type: "string", description: "FCM registration token obtained by the browser.", example: "eXaMpLeFcMtOkEn..." },
+                                        platform: { type: "string", enum: ["web"], default: "web", description: "Only 'web' is supported." },
+                                    },
+                                },
+                                example: { token: "eXaMpLeFcMtOkEn...", platform: "web" },
+                            },
+                        },
+                    },
+                    responses: {
+                        200: { description: "Token registered.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { pushToken: { type: "object", properties: { id: { type: "string" }, platform: { type: "string" }, isActive: { type: "boolean" }, lastSeenAt: { type: "string", format: "date-time" } } } } } } } } } },
+                        400: { description: "Missing/empty token or unsupported platform.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                delete: {
+                    tags: ["Notifications"],
+                    summary: "Remove a browser push (FCM) token",
+                    description:
+                        "Requires authentication. Removes the given token, but only if it belongs to the caller. " +
+                        "Called by the browser on logout or when the user disables desktop notifications. Only the matching device token is removed - other devices stay registered.",
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    required: ["token"],
+                                    properties: { token: { type: "string", description: "FCM registration token to remove." } },
+                                },
+                                example: { token: "eXaMpLeFcMtOkEn..." },
+                            },
+                        },
+                    },
+                    responses: {
+                        200: { description: "Token removed.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiResponse" } } } },
+                        400: { description: "Missing/empty token.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                        404: { description: "Token not found or not owned by the caller.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
+                    },
+                },
+                get: {
+                    tags: ["Notifications"],
+                    summary: "List the caller's active push tokens",
+                    description:
+                        "Requires authentication. Returns the caller's active devices (token value is not echoed back) plus whether Firebase push is configured on the server.",
+                    responses: {
+                        200: { description: "Active push tokens.", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, message: { type: "string" }, data: { type: "object", properties: { tokens: { type: "array", items: { type: "object", properties: { platform: { type: "string" }, userAgent: { type: "string" }, lastSeenAt: { type: "string", format: "date-time" }, createdAt: { type: "string", format: "date-time" } } } }, configured: { type: "boolean" } } } } } } } },
+                        401: { description: "Not authenticated.", content: { "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } } } },
                     },
                 },
             },

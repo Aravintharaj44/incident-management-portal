@@ -12,10 +12,11 @@ import {
     Space,
     Typography,
 } from "antd";
-import { LockOutlined, SaveOutlined, UserOutlined } from "@ant-design/icons";
+import { LockOutlined, SaveOutlined, UserOutlined, BellOutlined } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import PageHeader from "../components/common/PageHeader";
 import { RoleTag } from "../components/common/Tags";
+import PushNotificationSettings from "../components/common/PushNotificationSettings";
 import { avatarColor, formatDateTime, initials } from "../utils/format";
 
 const { Text } = Typography;
@@ -220,6 +221,18 @@ const ProfilePage = () => {
                                 Change password
                             </Button>
                         </Form>
+                    </Card>
+
+                    <Card
+                        title={
+                            <Space>
+                                <BellOutlined />
+                                Desktop push notifications
+                            </Space>
+                        }
+                        style={{ marginTop: 16 }}
+                    >
+                        <PushNotificationSettings />
                     </Card>
                 </Col>
             </Row>

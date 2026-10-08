@@ -6,6 +6,7 @@ import {
     setStoredToken,
     setUnauthorizedHandler,
 } from "../api/client";
+import { unregisterPushOnLogout } from "../services/pushNotifications";
 import { ROLES } from "../utils/constants";
 import { AuthContext } from "./authContextObject";
 
@@ -25,6 +26,9 @@ export const AuthProvider = ({ children }) => {
     const [isLoading, setIsLoading] = useState(true);
 
     const logout = useCallback(() => {
+        // Best-effort: drop this device's push token while the JWT is still
+        // known, then end the session. Never blocks or fails the logout.
+        unregisterPushOnLogout(getStoredToken());
         clearStoredToken();
         setUser(null);
     }, []);

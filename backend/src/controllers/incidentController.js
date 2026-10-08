@@ -13,6 +13,7 @@ const { getPagination } = require("../utils/pagination");
 const { toCsv, sendCsv } = require("../utils/csv");
 const activityService = require("../services/activityService");
 const notificationService = require("../services/notificationService");
+const { PUSH_EVENTS } = require("../services/pushNotificationService");
 const permissions = require("../services/permissionService");
 const slaService = require("../services/slaService");
 const IncidentLink = require("../models/IncidentLink");
@@ -696,6 +697,26 @@ const declareMajorIncident = asyncHandler(async (req, res) => {
     incident.majorIncidentUpdateCadenceMinutes = updateCadenceMinutes || null;
     await incident.save();
     await activityService.record({ incident: incident._id, action: ACTIVITY_ACTIONS.MAJOR_INCIDENT_DECLARED, performedBy: req.user._id, note: `Major incident declared: ${incident.majorIncidentReason}` });
+
+    // Best-effort web push to active support staff (push-only - major incident
+    // declaration historically had no notification hook). Never throws.
+    try {
+        const staff = await User.find({
+            role: { $in: [ROLES.ADMIN, ROLES.AGENT] },
+            isActive: true,
+        }).select("name email isActive").lean();
+        await notificationService.pushIncidentEvent({
+            recipients: staff,
+            incident,
+            type: PUSH_EVENTS.INCIDENT_MAJOR,
+            title: `Major incident declared: ${incident.incidentNumber}`,
+            body: incident.title,
+            actorId: req.user._id,
+        });
+    } catch (error) {
+        logger.error(`major incident push failed: ${error.message}`);
+    }
+
     return successResponse(res, 200, "Major incident declared", { incident: decorate(incident.toObject()) });
 });
 /**

@@ -8,11 +8,19 @@ const {
     markAsRead,
     markAllAsRead,
     deleteNotification,
+    registerPushToken,
+    unregisterPushToken,
+    listPushTokens,
 } = require("../controllers/notificationController");
 
 const router = express.Router();
 
 router.use(protect);
+
+// Web push (FCM) token management - always scoped to req.user.
+router.post("/push/register", registerPushToken);
+router.delete("/push/register", unregisterPushToken);
+router.get("/push/register", listPushTokens);
 
 router.get("/", listNotifications);
 router.get("/unread-count", getUnreadCount);

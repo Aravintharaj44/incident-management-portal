@@ -122,6 +122,16 @@ const env = {
         max: toInt(process.env.RATE_LIMIT_MAX, 1000),
         authMax: toInt(process.env.RATE_LIMIT_AUTH_MAX, 30),
     },
+    // Firebase Cloud Messaging (push notifications). All values optional - when
+    // absent the push feature degrades to "not configured" and everything else
+    // keeps working. FIREBASE_PRIVATE_KEY may arrive with escaped \n sequences.
+    firebase: {
+        projectId: process.env.FIREBASE_PROJECT_ID || "",
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL || "",
+        privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+        // Optional local fallback (never used in production deployments).
+        serviceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH || "",
+    },
     publicApiDailyCredits: toInt(process.env.PUBLIC_API_DAILY_CREDITS, 1000),
     seedResetsData: toBool(process.env.SEED_RESET, true),
     csatFollowupThreshold: toInt(process.env.CSAT_FOLLOWUP_THRESHOLD, 3),

@@ -36,6 +36,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { ROLES } from "../../utils/constants";
 import { avatarColor, initials } from "../../utils/format";
 import NotificationBell from "./NotificationBell";
+import PushNotificationListener from "./PushNotificationListener";
 import ChatbotAssistant from "../chatbot/ChatbotAssistant";
 
 const { Header, Sider, Content, Footer } = Layout;
@@ -370,6 +371,7 @@ const AppLayout = () => {
                 </Content>
 
                 <ChatbotAssistant />
+                <PushNotificationListener />
                 <Footer style={{ textAlign: "center", color: "#8c8c8c", fontSize: 12 }}>
                     Incident Management Portal - Zybisys-COC - v1.0
                 </Footer>

@@ -6,6 +6,8 @@ const Incident = require("../models/Incident");
 const DepartmentUser = require("../models/DepartmentUser");
 const activityService = require("./activityService");
 const { sendIncidentEscalated } = require("./emailService");
+const { pushIncidentEvent } = require("./notificationService");
+const { PUSH_EVENTS } = require("./pushNotificationService");
 const logger = require("../utils/logger");
 
 const {
@@ -482,6 +484,16 @@ const processUnacknowledgedEscalations = async () => {
         logger.info(
             `Escalated ${incident.incidentNumber} to Level 2 user ${level2User}`
         );
+
+        // Best-effort web push to the new L2 owner and the reporter
+        // (push-only - this path historically had no notification hook).
+        await pushIncidentEvent({
+            recipients: [level2User, incident.reportedBy],
+            incident,
+            type: PUSH_EVENTS.INCIDENT_ESCALATED,
+            title: `${incident.incidentNumber} escalated to Level 2`,
+            body: incident.title,
+        });
     }
 };
 

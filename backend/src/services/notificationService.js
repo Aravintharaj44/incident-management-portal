@@ -2,6 +2,7 @@ const Notification = require("../models/Notification");
 const User = require("../models/User");
 const logger = require("../utils/logger");
 const emailService = require("./emailService");
+const pushNotificationService = require("./pushNotificationService");
 const { NOTIFICATION_TYPES, STATUS_LABELS } = require("../constants");
 const { idOf } = require("./permissionService");
 const PostResolutionSurvey = require("../models/PostResolutionSurvey");
@@ -56,16 +57,75 @@ const createInApp = async (recipients, payload) => {
     );
 };
 
+/**
+ * Best-effort web push to exactly the same recipients that received the
+ * in-app row above - reuses the resolved/hydrated recipient list so push can
+ * never fan out wider than the existing rules allow. Never throws.
+ */
+const pushToTargets = async (targets, rows, { title, body, type, incident }) => {
+    try {
+        if (!targets.length) return;
+
+        await pushNotificationService.sendToUsers(
+            targets,
+            pushNotificationService.buildPayload({
+                title,
+                body,
+                type,
+                incident,
+                notificationId: rows?.[0]?._id || null,
+            })
+        );
+    } catch (error) {
+        logger.error("push notification failed", error.message);
+    }
+};
+
+/**
+ * Push-only fan-out for events that have no in-app/email notification today
+ * (acknowledge, escalation, major incident, SLA overdue). Recipients still go
+ * through the same resolve/hydrate rules: deduped, actor excluded, active
+ * users only. Never throws.
+ */
+const pushIncidentEvent = async ({
+    recipients,
+    incident,
+    type,
+    title,
+    body = "",
+    actorId = null,
+}) => {
+    try {
+        const targets = await hydrate(resolveRecipients(recipients, actorId));
+        if (!targets.length) return;
+
+        await pushNotificationService.sendToUsers(
+            targets,
+            pushNotificationService.buildPayload({ title, body, type, incident })
+        );
+    } catch (error) {
+        logger.error(`pushIncidentEvent failed (${error.message})`);
+    }
+};
+
 const notifyIncidentCreated = async ({ incident, reporter, recipients }) => {
     try {
         const targets = await hydrate(resolveRecipients(recipients, reporter));
         if (!targets.length) return;
 
-        await createInApp(targets, {
+        const title = `New incident ${incident.incidentNumber}`;
+        const rows = await createInApp(targets, {
             type: NOTIFICATION_TYPES.INCIDENT_CREATED,
-            title: `New incident ${incident.incidentNumber}`,
+            title,
             body: incident.title,
             incident: incident._id,
+        });
+
+        await pushToTargets(targets, rows, {
+            title,
+            body: incident.title,
+            type: pushNotificationService.PUSH_EVENTS.INCIDENT_CREATED,
+            incident,
         });
 
         await Promise.all(
@@ -83,11 +143,19 @@ const notifyIncidentAssigned = async ({ incident, assignee, assignedBy }) => {
         const targets = await hydrate(resolveRecipients([assignee], assignedBy));
         if (!targets.length) return;
 
-        await createInApp(targets, {
+        const title = `${incident.incidentNumber} assigned to you`;
+        const rows = await createInApp(targets, {
             type: NOTIFICATION_TYPES.INCIDENT_ASSIGNED,
-            title: `${incident.incidentNumber} assigned to you`,
+            title,
             body: incident.title,
             incident: incident._id,
+        });
+
+        await pushToTargets(targets, rows, {
+            title,
+            body: incident.title,
+            type: pushNotificationService.PUSH_EVENTS.INCIDENT_ASSIGNED,
+            incident,
         });
 
         await Promise.all(
@@ -108,11 +176,19 @@ const notifyStatusChanged = async ({ incident, oldStatus, newStatus, changedBy }
         );
         if (!targets.length) return;
 
-        await createInApp(targets, {
+        const title = `${incident.incidentNumber} is now ${STATUS_LABELS[newStatus]}`;
+        const rows = await createInApp(targets, {
             type: NOTIFICATION_TYPES.STATUS_CHANGED,
-            title: `${incident.incidentNumber} is now ${STATUS_LABELS[newStatus]}`,
+            title,
             body: incident.title,
             incident: incident._id,
+        });
+
+        await pushToTargets(targets, rows, {
+            title,
+            body: incident.title,
+            type: pushNotificationService.PUSH_EVENTS.STATUS_CHANGED,
+            incident,
         });
 
         await Promise.all(
@@ -141,11 +217,19 @@ const notifyCommentAdded = async ({ incident, comment, author, staffOnly = false
         const targets = await hydrate(resolveRecipients(candidates, author));
         if (!targets.length) return;
 
-        await createInApp(targets, {
+        const title = `New comment on ${incident.incidentNumber}`;
+        const rows = await createInApp(targets, {
             type: NOTIFICATION_TYPES.COMMENT_ADDED,
-            title: `New comment on ${incident.incidentNumber}`,
+            title,
             body: comment.message.slice(0, 140),
             incident: incident._id,
+        });
+
+        await pushToTargets(targets, rows, {
+            title,
+            body: comment.message.slice(0, 140),
+            type: pushNotificationService.PUSH_EVENTS.COMMENT_ADDED,
+            incident,
         });
 
         await Promise.all(
@@ -177,10 +261,18 @@ const notifyActionItemAssigned = async ({ actionItem, owner, assignedBy }) => {
         const targets = await hydrate(resolveRecipients([owner], assignedBy));
         if (!targets.length) return;
 
-        await createInApp(targets, {
+        const title = "Action item assigned to you";
+        const rows = await createInApp(targets, {
             type: NOTIFICATION_TYPES.ACTION_ITEM_ASSIGNED,
-            title: "Action item assigned to you",
+            title,
             body: actionItem.description.slice(0, 140),
+            incident: actionItem.rca?.incident || null,
+        });
+
+        await pushToTargets(targets, rows, {
+            title,
+            body: actionItem.description.slice(0, 140),
+            type: pushNotificationService.PUSH_EVENTS.ACTION_ITEM_ASSIGNED,
             incident: actionItem.rca?.incident || null,
         });
 
@@ -200,10 +292,18 @@ const notifyActionItemDueSoon = async ({ actionItem, owner }) => {
         const targets = await hydrate(resolveRecipients([owner], null));
         if (!targets.length) return false;
 
-        await createInApp(targets, {
+        const title = "Action item due soon";
+        const rows = await createInApp(targets, {
             type: NOTIFICATION_TYPES.ACTION_ITEM_DUE_SOON,
-            title: "Action item due soon",
+            title,
             body: actionItem.description.slice(0, 140),
+            incident: actionItem.rca?.incident || null,
+        });
+
+        await pushToTargets(targets, rows, {
+            title,
+            body: actionItem.description.slice(0, 140),
+            type: pushNotificationService.PUSH_EVENTS.ACTION_ITEM_DUE_SOON,
             incident: actionItem.rca?.incident || null,
         });
 
@@ -225,10 +325,18 @@ const notifyActionItemOverdue = async ({ actionItem, owner }) => {
         const targets = await hydrate(resolveRecipients([owner], null));
         if (!targets.length) return false;
 
-        await createInApp(targets, {
+        const title = "Action item is overdue";
+        const rows = await createInApp(targets, {
             type: NOTIFICATION_TYPES.ACTION_ITEM_OVERDUE,
-            title: "Action item is overdue",
+            title,
             body: actionItem.description.slice(0, 140),
+            incident: actionItem.rca?.incident || null,
+        });
+
+        await pushToTargets(targets, rows, {
+            title,
+            body: actionItem.description.slice(0, 140),
+            type: pushNotificationService.PUSH_EVENTS.ACTION_ITEM_OVERDUE,
             incident: actionItem.rca?.incident || null,
         });
 
@@ -296,5 +404,6 @@ module.exports = {
     notifyActionItemAssigned,
     notifyActionItemDueSoon,
     notifyActionItemOverdue,
-    notifyPostResolutionSurvey
+    notifyPostResolutionSurvey,
+    pushIncidentEvent,
 };

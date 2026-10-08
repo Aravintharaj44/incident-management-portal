@@ -22,5 +22,8 @@ Thumbs.db
 .env.example
 !.env.example
 
+# Firebase service-account credentials - SECRET, never commit
+incident-management-firebase.json
+
 # Project deck generator
 /scripts/generateProjectDeck.js

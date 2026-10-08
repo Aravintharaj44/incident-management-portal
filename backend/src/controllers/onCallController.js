@@ -4,6 +4,8 @@ const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const { successResponse } = require("../utils/apiResponse");
 const activityLogService = require("../services/activityService");
+const { pushIncidentEvent } = require("../services/notificationService");
+const { PUSH_EVENTS } = require("../services/pushNotificationService");
 const { ACTIVITY_ACTIONS, STATUS } = require("../constants");
 const createRoster = asyncHandler(async (req, res) => {
     const { department, category, startTime, endTime, ackWindowMinutes, escalationChain } = req.body;
@@ -57,6 +59,17 @@ const acknowledgeIncident = async (req, res) => {
             performedBy: req.user._id,
             note: `${req.user.name || "Support Agent"} acknowledged the incident alert`
         })
+
+        // Best-effort web push to the reporter and current owner (push-only -
+        // acknowledge historically had no notification hook). Never throws.
+        await pushIncidentEvent({
+            recipients: [incident.reportedBy, incident.assignedTo],
+            incident,
+            type: PUSH_EVENTS.INCIDENT_ACKNOWLEDGED,
+            title: `${incident.incidentNumber} acknowledged`,
+            body: incident.title,
+            actorId: req.user._id,
+        });
 
         return res.status(200).json({
             success: true,
