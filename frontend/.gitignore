@@ -21,3 +21,4 @@ coverage/
 
 !src/test/
 !src/test/ChatbotAssistant.test.jsx
+.env.example
