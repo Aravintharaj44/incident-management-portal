@@ -6,6 +6,7 @@ node_modules/
 .env.local
 .env.*.local
 
+incident-management-firebase.json
 # Uploaded attachments are user data, not source
 uploads/
 
