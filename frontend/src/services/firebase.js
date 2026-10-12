@@ -21,14 +21,40 @@ const firebaseConfig = {
 
 export const getVapidKey = () => import.meta.env.VITE_FIREBASE_VAPID_KEY || "";
 
-export const isFirebaseConfigured = () =>
-    Boolean(
-        firebaseConfig.apiKey &&
-            firebaseConfig.projectId &&
-            firebaseConfig.messagingSenderId &&
-            firebaseConfig.appId &&
-            getVapidKey()
-    );
+const firebaseConfigFields = [
+    {
+        name: "VITE_FIREBASE_API_KEY",
+        value: firebaseConfig.apiKey,
+        format: /^AIza[0-9A-Za-z_-]{20,}$/,
+    },
+    {
+        name: "VITE_FIREBASE_PROJECT_ID",
+        value: firebaseConfig.projectId,
+        format: /^[a-z0-9-]+$/,
+    },
+    {
+        name: "VITE_FIREBASE_MESSAGING_SENDER_ID",
+        value: firebaseConfig.messagingSenderId,
+        format: /^\d+$/,
+    },
+    {
+        name: "VITE_FIREBASE_APP_ID",
+        value: firebaseConfig.appId,
+        format: /^\d+:\d+:web:[A-Za-z0-9_-]+$/i,
+    },
+    {
+        name: "VITE_FIREBASE_VAPID_KEY",
+        value: getVapidKey(),
+        format: /^[A-Za-z0-9_-]{80,}={0,2}$/,
+    },
+];
+
+export const getFirebaseConfigIssues = () =>
+    firebaseConfigFields
+        .filter(({ value, format }) => !format.test(value))
+        .map(({ name }) => name);
+
+export const isFirebaseConfigured = () => getFirebaseConfigIssues().length === 0;
 
 let app = null;
 let messagingPromise = null;

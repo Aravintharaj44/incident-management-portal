@@ -111,27 +111,39 @@ const pushIncidentEvent = async ({
 const notifyIncidentCreated = async ({ incident, reporter, recipients }) => {
     try {
         const targets = await hydrate(resolveRecipients(recipients, reporter));
-        if (!targets.length) return;
-
         const title = `New incident ${incident.incidentNumber}`;
-        const rows = await createInApp(targets, {
-            type: NOTIFICATION_TYPES.INCIDENT_CREATED,
-            title,
-            body: incident.title,
-            incident: incident._id,
-        });
+        if (targets.length) {
+            const rows = await createInApp(targets, {
+                type: NOTIFICATION_TYPES.INCIDENT_CREATED,
+                title,
+                body: incident.title,
+                incident: incident._id,
+            });
 
-        await pushToTargets(targets, rows, {
-            title,
-            body: incident.title,
-            type: pushNotificationService.PUSH_EVENTS.INCIDENT_CREATED,
-            incident,
-        });
+            await pushToTargets(targets, rows, {
+                title,
+                body: incident.title,
+                type: pushNotificationService.PUSH_EVENTS.INCIDENT_CREATED,
+                incident,
+            });
 
-        await Promise.all(
-            targets.map((to) =>
-                emailService.sendIncidentCreated({ to: to.email, incident, reporter })
-            )
+            await Promise.all(
+                targets.map((to) =>
+                    emailService.sendIncidentCreated({ to: to.email, incident, reporter })
+                )
+            );
+        }
+
+        // The reporter is intentionally excluded from staff email/in-app
+        // fan-out, but should still receive a push confirmation on their device.
+        await pushNotificationService.sendToUsers(
+            [reporter],
+            pushNotificationService.buildPayload({
+                title: `Incident created: ${incident.incidentNumber}`,
+                body: incident.title,
+                type: pushNotificationService.PUSH_EVENTS.INCIDENT_CREATED,
+                incident,
+            })
         );
     } catch (error) {
         logger.error("notifyIncidentCreated failed", error.message);

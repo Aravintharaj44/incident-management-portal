@@ -146,7 +146,7 @@ const createTicket = asyncHandler(async (req, res) => {
     })
         .select("name email isActive")
         .lean();
-    notificationService.notifyIncidentCreated({
+    await notificationService.notifyIncidentCreated({
         incident,
         reporter: req.user,
         recipients: staff,

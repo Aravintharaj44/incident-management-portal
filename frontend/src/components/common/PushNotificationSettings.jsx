@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, App, Button, Space, Tag, Typography } from "antd";
 import { BellOutlined, BellFilled } from "@ant-design/icons";
+import { getFirebaseConfigIssues } from "../../services/firebase";
 import {
     PUSH_STATUS,
     disablePush,
@@ -82,6 +83,7 @@ const PushNotificationSettings = () => {
     };
 
     const meta = status ? STATUS_META[status.status] : null;
+    const firebaseConfigIssues = getFirebaseConfigIssues();
 
     return (
         <>
@@ -150,7 +152,21 @@ const PushNotificationSettings = () => {
                     type="info"
                     showIcon
                     message="Push notifications are not configured"
-                    description="This deployment does not have Firebase Cloud Messaging configured. All other portal features work as usual."
+                    description={
+                        <>
+                            Check the Firebase Admin credentials on the backend and the
+                            Firebase Web app settings in the frontend build environment.
+                            {firebaseConfigIssues.length > 0 ? (
+                                <>
+                                    {" "}
+                                    Missing or invalid frontend settings:{" "}
+                                    <Text code>{firebaseConfigIssues.join(", ")}</Text>.
+                                    Use the Web app config and public Web Push key, never
+                                    an Admin SDK private key.
+                                </>
+                            ) : null}
+                        </>
+                    }
                 />
             ) : null}
         </>

@@ -393,6 +393,60 @@ test("push register list returns only the caller's tokens and the configured fla
  * 4. Integration with the existing notification service
  * ======================================================================== */
 
+test("incident-created push reaches the reporter and the staff recipients", async (t) => {
+    const reporter = await createActiveUser("push-created-reporter", "user");
+    const staff = await createActiveUser("push-created-staff", "support_agent");
+    const calls = [];
+
+    t.mock.method(pushNotificationService, "sendToUsers", async (users, payload) => {
+        calls.push({ users: users.map((user) => String(user._id ?? user)), payload });
+    });
+
+    const incident = {
+        _id: new mongoose.Types.ObjectId(),
+        incidentNumber: "PUSH-TEST-CREATED-001",
+        title: "Created incident push test",
+    };
+
+    await notificationService.notifyIncidentCreated({
+        incident,
+        reporter,
+        recipients: [staff],
+    });
+
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[0].users, [String(staff._id)]);
+    assert.equal(calls[0].payload.notification.title, "New incident PUSH-TEST-CREATED-001");
+    assert.deepEqual(calls[1].users, [String(reporter._id)]);
+    assert.equal(
+        calls[1].payload.notification.title,
+        "Incident created: PUSH-TEST-CREATED-001"
+    );
+    assert.equal(calls[1].payload.data.type, "INCIDENT_CREATED");
+});
+
+test("incident-created push still reaches the reporter when there are no staff recipients", async (t) => {
+    const reporter = await createActiveUser("push-created-alone", "user");
+    const calls = [];
+
+    t.mock.method(pushNotificationService, "sendToUsers", async (users, payload) => {
+        calls.push({ users: users.map((user) => String(user._id ?? user)), payload });
+    });
+
+    await notificationService.notifyIncidentCreated({
+        incident: {
+            _id: new mongoose.Types.ObjectId(),
+            incidentNumber: "PUSH-TEST-CREATED-002",
+            title: "Created incident without staff",
+        },
+        reporter,
+        recipients: [],
+    });
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].users, [String(reporter._id)]);
+});
+
 test("notifyIncidentAssigned fans out a push to the assignee only", async (t) => {
     const assignee = await createActiveUser("push-assignee", "support_agent");
     const bystander = await createActiveUser("push-bystander", "support_agent");

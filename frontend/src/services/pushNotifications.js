@@ -1,5 +1,5 @@
 import client from "../api/client";
-import { getToken, onMessage } from "firebase/messaging";
+import { getToken } from "firebase/messaging";
 import { notificationApi } from "../api/notifications";
 import {
     getFirebaseMessaging,
@@ -202,30 +202,12 @@ export const syncPushToken = async () => {
         const token = await getTokenWithVapid(messaging, registration);
         if (!token) return null;
 
-        if (token !== readStoredToken()) {
-            await notificationApi.registerPush(token);
-            storeToken(token);
-        }
+        // The local token can outlive its backend record (for example after a
+        // database restore), so always re-register; the endpoint is idempotent.
+        await notificationApi.registerPush(token);
+        storeToken(token);
         return token;
     } catch {
         return null;
-    }
-};
-
-/**
- * Foreground messages (app visible). Returns an unsubscribe function.
- * The caller decides how to display - we never auto-show a duplicate.
- */
-export const onForegroundPush = async (handler) => {
-    if (!isBrowserSupported() || !isFirebaseConfigured()) return () => {};
-    if (Notification.permission !== "granted") return () => {};
-
-    try {
-        const messaging = await getFirebaseMessaging();
-        if (!messaging) return () => {};
-
-        return onMessage(messaging, handler);
-    } catch {
-        return () => {};
     }
 };

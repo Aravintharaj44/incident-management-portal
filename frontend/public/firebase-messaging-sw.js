@@ -4,13 +4,9 @@
  * incident on click. Deliberately uses only the public Web Push payload -
  * no Firebase configuration, service-account material or secrets live here.
  *
- * Foreground/background routing:
- * - If a visible app window exists, the payload is forwarded to it via
- *   postMessage and NO system notification is shown (the app displays its own
- *   in-app notification instead - no duplicate).
- * - Otherwise the notification is shown here. The `push` handler always calls
- *   showNotification(); per the Push API spec the browser then does NOT also
- *   auto-display the payload notification, so there is never a duplicate.
+ * Notifications are displayed as browser notifications whether the portal is
+ * in the foreground or background. Foreground messages are not duplicated as
+ * in-app toast notifications.
  */
 
 const DEFAULT_ICON = "/favicon.svg";
@@ -40,29 +36,11 @@ self.addEventListener("push", (event) => {
     const targetUrl = buildTargetUrl(data);
 
     event.waitUntil(
-        (async () => {
-            const windowClients = await self.clients.matchAll({
-                type: "window",
-                includeUncontrolled: true,
-            });
-
-            const visibleClient = windowClients.find(
-                (client) => client.visibilityState === "visible" || client.focused
-            );
-
-            if (visibleClient) {
-                // App is open and visible - hand the message to the page so it
-                // can show its in-app notification instead of a system popup.
-                visibleClient.postMessage({ type: "FCM_PUSH_FOREGROUND", payload });
-                return;
-            }
-
-            await self.registration.showNotification(title, {
-                body: notification.body || "",
-                icon: notification.icon || DEFAULT_ICON,
-                data: { ...data, url: targetUrl || self.location.origin },
-            });
-        })()
+        self.registration.showNotification(title, {
+            body: notification.body || "",
+            icon: notification.icon || DEFAULT_ICON,
+            data: { ...data, url: targetUrl || self.location.origin },
+        })
     );
 });
 

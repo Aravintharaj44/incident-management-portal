@@ -14,7 +14,7 @@ const createIncidentForReporter = async ({ title, description, category, priorit
   await activityService.record({ incident: incident._id, action: ACTIVITY_ACTIONS.CREATED, performedBy: reporter._id, note: `Incident raised with ${PRIORITY_LABELS[incident.priority]} priority` });
   if (assignedTo) { const assignee = await User.findById(assignedTo).select("name").lean(); await activityService.record({ incident: incident._id, action: ACTIVITY_ACTIONS.ASSIGNED, performedBy: reporter._id, field: "assignedTo", oldValue: "Unassigned", newValue: assignee?.name || "Unknown", note: "Auto-assigned based on active L1 department members or an on-call schedule" }); }
   const staff = await User.find({ role: { $in: [ROLES.ADMIN, ROLES.AGENT] }, isActive: true }).select("name email isActive").lean();
-  notificationService.notifyIncidentCreated({ incident, reporter, recipients: staff });
+  await notificationService.notifyIncidentCreated({ incident, reporter, recipients: staff });
   return incident;
 };
 module.exports = { createIncidentForReporter };
