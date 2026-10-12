@@ -113,7 +113,7 @@ const registerPushToken = asyncHandler(async (req, res) => {
                 lastSeenAt: new Date(),
             },
         },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
+        { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
     );
 
     return successResponse(res, 200, "Push token registered", {
