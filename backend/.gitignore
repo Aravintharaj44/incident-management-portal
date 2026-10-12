@@ -6,8 +6,12 @@ node_modules/
 .env.local
 .env.*.local
 
+<<<<<<< HEAD
 .env.example
 
+=======
+incident-management-firebase.json
+>>>>>>> 4fd68079f509766cab603982a755307c429f2370
 # Uploaded attachments are user data, not source
 uploads/
 
